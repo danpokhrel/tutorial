@@ -1,0 +1,3173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Building a Node Graph Editor in Rust with dear-app</title>
+  <meta name="description" content="A comprehensive tutorial for building a clean, modern node graph editor GUI in Rust using dear-app and dear-imgui-rs, following Rust Book best practices.">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2358a6ff'/><text x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='sans-serif'>n</text></svg>">
+</head>
+<body>
+  <button class="menu-toggle" aria-label="Toggle menu">☰</button>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">⬡</div>
+          <div class="logo-text">Node Graph Editor<br>in Rust</div>
+        </div>
+        <div class="subtitle">A dear-app Tutorial</div>
+      </div>
+      <nav class="sidebar-nav">
+        <!-- Populated by JavaScript -->
+      </nav>
+      <div class="sidebar-footer">
+        Built with <a href="https://crates.io/crates/dear-app" target="_blank">dear-app</a> &amp;
+        <a href="https://crates.io/crates/dear-imgui-rs" target="_blank">dear-imgui-rs</a><br>
+        Following <a href="https://doc.rust-lang.org/stable/book/" target="_blank">The Rust Book</a>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <div class="main">
+      <div class="content">
+        <!-- ============================================ -->
+        <!-- Chapter 01: Introduction -->
+        <!-- ============================================ -->
+        <section id="chapter-intro" class="chapter-section active">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 01</div>
+            <h1>Introduction</h1>
+            <p class="lead">Build a clean, modern node graph editor GUI in Rust from scratch using <code>dear-app</code> and <code>dear-imnodes</code> — following the architectural principles of <em>The Rust Programming Language</em>.</p>
+          </div>
+
+          <h2>What You Will Build</h2>
+          <p>By the end of this tutorial, you will have a fully functional node graph editor — the kind you see in shader editors, compositing tools, and visual scripting systems. It will feature:</p>
+
+          <div class="card-grid">
+            <div class="card">
+              <div class="card-icon">🔗</div>
+              <h4>Interactive Nodes</h4>
+              <p>Draggable nodes with input/output pins, title bars, and embedded widgets.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">⚡</div>
+              <h4>Live Connections</h4>
+              <p>Click-drag to create links between pins, with validation and deletion.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">🎨</div>
+              <h4>Modern Styling</h4>
+              <p>Custom dark theme, styled pins, colored links, and a minimap.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">💾</div>
+              <h4>Persistence</h4>
+              <p>Save and restore the entire graph layout to and from disk.</p>
+            </div>
+          </div>
+
+          <h2>Prerequisites</h2>
+          <p>This tutorial assumes you have read through <strong>Chapters 1–9</strong> of <a href="https://doc.rust-lang.org/stable/book/" target="_blank">The Rust Book</a> — covering ownership, borrowing, structs, enums, error handling, and modules. You should be comfortable with:</p>
+          <ul>
+            <li>Creating a new project with <code>cargo new</code></li>
+            <li>Writing <code>impl</code> blocks and using traits</li>
+            <li>Using <code>Result</code> and the <code>?</code> operator (Book Ch. 9)</li>
+            <li>Organizing code into modules (Book Ch. 7)</li>
+          </ul>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book Reference</div>
+              <p>Throughout this tutorial, we link to specific chapters of <a href="https://doc.rust-lang.org/stable/book/" target="_blank">The Rust Programming Language</a>. These references ground our architectural decisions in the canonical Rust patterns the book teaches.</p>
+            </div>
+          </div>
+
+          <h2>The Tools We Will Use</h2>
+
+          <h3>Dear ImGui</h3>
+          <p><a href="https://github.com/ocornut/imgui" target="_blank">Dear ImGui</a> is a bloat-free immediate-mode GUI library. In immediate mode, the UI is re-built every frame from scratch — there is no retained widget tree. This makes it exceptionally fast to iterate on and ideal for developer tools, editors, and real-time applications.</p>
+
+          <h3>dear-imgui-rs</h3>
+          <p><a href="https://crates.io/crates/dear-imgui-rs" target="_blank"><code>dear-imgui-rs</code></a> is a modern Rust bindings ecosystem for Dear ImGui, created by <a href="https://github.com/Latias94" target="_blank">Latias94</a>. It provides safe, idiomatic Rust wrappers over the C API and ships with:</p>
+          <ul>
+            <li><strong>Full docking support</strong> — dockspaces, tab bars, and (experimentally) multi-viewport</li>
+            <li><strong>Multiple backends</strong> — WGPU, OpenGL (glow), Vulkan (Ash), Winit, SDL3</li>
+            <li><strong>Rich extensions</strong> — ImPlot (2D/3D plotting), ImGuizmo (3D gizmos), ImNodes &amp; imgui-node-editor (node editors), file browser, and reflection-based UI</li>
+            <li><strong>Idiomatic Rust API</strong> — RAII tokens for scoped operations, strongly-typed flags/enums, and safe lifetimes</li>
+          </ul>
+
+          <h3>dear-app</h3>
+          <p><a href="https://crates.io/crates/dear-app" target="_blank"><code>dear-app</code></a> is the application runner for <code>dear-imgui-rs</code>. It bundles Winit + WGPU setup into a tiny API so you can focus on your UI instead of window and GPU boilerplate. It provides:</p>
+          <ul>
+            <li><code>run_simple</code> / <code>AppBuilder</code> — a per-frame closure API; <code>AppBuilder</code> adds config, docking, themes, and lifecycle hooks</li>
+            <li><code>RunnerCallbacks</code> / <code>AppBuilder</code> hooks — optional lifecycle callbacks (<code>on_setup</code>, <code>on_style</code>, <code>on_fonts</code>, <code>on_gpu_init</code>, <code>on_event</code>, <code>on_exit</code>)</li>
+            <li><strong>Add-on initialization</strong> — ImPlot, ImNodes, and ImPlot3D presence flags compiled in and enabled via <code>AddOnsConfig::auto()</code></li>
+            <li><strong>Optional GPU-init and event callbacks</strong> — for advanced use such as managing GPU resources or raw input</li>
+          </ul>
+
+          <div class="callout info">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">Why dear-app instead of raw backends?</div>
+              <p>The <code>dear-imgui-rs</code> ecosystem lets you wire up Winit + WGPU manually, but that's ~100 lines of boilerplate before you draw a single widget. <code>dear-app</code> hides that while preserving escape hatches when you need full control. This mirrors the Rust Book's philosophy: <em>start simple, then reach for lower-level tools when you need them</em> (see <a href="https://doc.rust-lang.org/stable/book/ch14-03-cargo-workspaces.html" target="_blank">Ch. 14.3 on workspaces</a>).</p>
+            </div>
+          </div>
+
+          <h2>Tutorial Roadmap</h2>
+          <p>This tutorial is organized into four parts:</p>
+          <ol>
+            <li><strong>Getting Started</strong> (Ch. 1–3) — Understand the ecosystem, set up the project, and structure it properly</li>
+            <li><strong>Core Concepts</strong> (Ch. 4–5) — Learn the immediate-mode paradigm and application lifecycle</li>
+            <li><strong>Building the Editor</strong> (Ch. 6–8) — Create nodes, pins, links, and a complete node graph</li>
+            <li><strong>Polish &amp; Production</strong> (Ch. 9–13) — Style it beautifully, add interactions, persist state, and architect for production</li>
+          </ol>
+
+          <div class="chapter-nav">
+            <div></div>
+            <a href="#what-is" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">What is dear-imgui-rs? →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 02: What is dear-imgui-rs? -->
+        <!-- ============================================ -->
+        <section id="chapter-what-is" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 02</div>
+            <h1>What is dear-imgui-rs?</h1>
+            <p class="lead">Before writing code, let's understand the crates we're using and why they exist alongside other ImGui Rust bindings.</p>
+          </div>
+
+          <h2>The Dear ImGui Ecosystem</h2>
+          <p>Dear ImGui is a C++ library. To use it from Rust, we need bindings that cross the FFI boundary safely. The <code>dear-imgui-rs</code> ecosystem takes a layered approach:</p>
+
+          <div class="diagram">
+            <pre style="text-align:left; display:inline-block; font-family:var(--font-mono); font-size:13px; line-height:1.8; color:var(--text-secondary);">
+┌──────────────────────────────────────────────┐
+│           Your Rust Application               │
+├──────────────────────────────────────────────┤
+│  dear-app (run_simple / AppBuilder)           │  ← What you write against
+├──────────┬──────────┬────────────────────────┤
+│dear-im-  │dear-im-  │dear-node-editor         │  ← Extension bindings
+│nodes     │plot      │(imgui-node-editor)      │
+├──────────┴──────────┴────────────────────────┤
+│  dear-imgui-rs  (safe Rust API)               │  ← Core bindings
+├──────────────────────────────────────────────┤
+│  dear-imgui-sys  (unsafe FFI via cimgui)      │  ← C ABI boundary
+├──────────────────────────────────────────────┤
+│  dear-imgui-wgpu / dear-imgui-winit           │  ← Platform + renderer
+├──────────────────────────────────────────────┤
+│  Dear ImGui (C++ docking branch)              │  ← Original library
+└──────────────────────────────────────────────┘
+            </pre>
+            <div class="diagram-label">Architecture of the dear-imgui-rs ecosystem</div>
+          </div>
+
+          <h3>Why cimgui?</h3>
+          <p>The ecosystem uses <a href="https://github.com/cimgui/cimgui" target="_blank">cimgui</a> — a thin C wrapper around the C++ Dear ImGui — as its ABI boundary. This is a deliberate choice explained by the author: generating bindings from the C API provides a <strong>stable, portable ABI</strong> that works across compilers (especially MSVC), and makes it straightforward to add third-party extensions like ImPlot and ImGuizmo.</p>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Unsafe Rust (Ch. 19)</div>
+              <p>FFI is an inherently unsafe operation — the Rust compiler cannot verify the correctness of C code. The <code>dear-imgui-sys</code> crate encapsulates all <code>unsafe</code> calls, and <code>dear-imgui-rs</code> builds safe wrappers on top. This is exactly the pattern described in <a href="https://doc.rust-lang.org/stable/book/ch19-01-unsafe-rust.html" target="_blank">Chapter 19.1</a>: wrap unsafe code behind a safe abstraction.</p>
+            </div>
+          </div>
+
+          <h2>Key Design Patterns</h2>
+          <p>Understanding these patterns will make the API feel natural:</p>
+
+          <h3>1. RAII Tokens for Scoped Operations</h3>
+          <p>In C++ ImGui, you call <code>Begin()</code> and must remember <code>End()</code>. In <code>dear-imgui-rs</code>, scoped operations return RAII tokens that call <code>End()</code> when dropped:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>RAII pattern</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// The _window token calls ui.end_window() when dropped
+let _window = ui.window("My Window")
+    .size([400.0, 300.0], Condition::FirstUseEver)
+    .begin();
+
+ui.text("Content inside the window");
+// _window dropped here → end_window() called automatically</code></pre>
+          </div>
+
+          <p>Alternatively, the <code>.build()</code> method takes a closure, making the scope explicit:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Builder closure pattern</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>ui.window("My Window")
+    .size([400.0, 300.0], Condition::FirstUseEver)
+    .build(|| {
+        ui.text("Content inside the window");
+    });</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: RAII &amp; Drop (Ch. 15.3)</div>
+              <p>RAII (Resource Acquisition Is Initialization) is a Rust-native pattern — <a href="https://doc.rust-lang.org/stable/book/ch15-03-drop.html" target="_blank">Chapter 15.3</a> covers the <code>Drop</code> trait. The ImGui bindings use it extensively so you can never forget to close a scope.</p>
+            </div>
+          </div>
+
+          <h3>2. Ui Extension Traits</h3>
+          <p>Extensions like ImNodes are added to the <code>Ui</code> type via extension traits. You import the trait to unlock new methods:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Trait extension pattern</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imnodes::ImNodesExt;
+
+// Importing the trait adds .imnodes_editor() to the Ui
+let editor = ui.imnodes_editor(&amp;nodes_context, Some(&amp;editor_context));</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Traits (Ch. 10.2)</div>
+              <p>Extension traits follow the pattern from <a href="https://doc.rust-lang.org/stable/book/ch10-02-traits.html" target="_blank">Chapter 10.2</a>. They let external crates add methods to types they don't own — a core Rust idiom for composition.</p>
+            </div>
+          </div>
+
+          <h3>3. Strongly-Typed IDs</h3>
+          <p>ImNodes uses integer IDs internally, but the Rust bindings wrap them in newtypes (<code>NodeId</code>, <code>PinId</code>, <code>LinkId</code>) so you can't accidentally pass a node ID where a pin ID is expected:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Newtype IDs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Each ID type is distinct — the compiler catches mix-ups
+let node = imnodes::NodeId::new(1);
+let pin = imnodes::PinId::new(10);
+let link = imnodes::LinkId::new(100);
+
+// editor.node(pin);  // ❌ won't compile — type mismatch
+editor.node(node);    // ✅ correct</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Newtype Pattern (Ch. 19.3)</div>
+              <p>Newtypes are covered in <a href="https://doc.rust-lang.org/stable/book/ch19-03-advanced-traits.html#using-the-newtype-pattern-for-type-safety" target="_blank">Chapter 19.3</a>. They have zero runtime cost and give you compile-time type safety — a cornerstone of idiomatic Rust.</p>
+            </div>
+          </div>
+
+          <h2>dear-app: The Application Runner</h2>
+          <p><code>dear-app</code> sits at the top of the stack and gives you two entry points:</p>
+
+          <h3>Simple: <code>run_simple</code> / <code>run</code></h3>
+          <p>For applications that only need persistent UI state — no raw window events, no GPU resources — <code>run_simple</code> takes a per-frame closure (no config). When you need window title, size, or docking configuration, use <code>run</code>, which takes a <code>RunnerConfig</code>, an <code>AddOnsConfig</code>, and a closure that receives <code>(&amp;Ui, &amp;mut AddOns&lt;'_&gt;)</code>:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>run_simple minimal example</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_app::{DearAppError, run_simple};
+use dear_imgui_rs::Condition;
+
+fn main() -> Result&lt;(), DearAppError&gt; {
+    let mut clicks = 0;
+    run_simple(move |ui| {
+        ui.window("Hello")
+            .size([360.0, 160.0], Condition::FirstUseEver)
+            .build(|| {
+                if ui.button("Click me") {
+                    clicks += 1;
+                }
+                ui.same_line();
+                ui.text(format!("Clicks: {clicks}"));
+            });
+    })
+}</code></pre>
+          </div>
+
+          <h3>Advanced: <code>AppBuilder</code> / <code>RunnerCallbacks</code></h3>
+          <p>When you need context initialization, raw window events, GPU resources, device-loss recovery, or deterministic teardown, use the <code>AppBuilder</code> builder pattern with its lifecycle callbacks (also exposed via the <code>RunnerCallbacks</code> struct):</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>AppBuilder lifecycle hooks</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// AppBuilder / RunnerCallbacks lifecycle hooks (0.15.x):
+// on_setup    — customize the ImGui Context before first frame (&amp;mut Context)
+// on_style    — apply custom ImGui styling
+// on_fonts    — configure font atlas
+// on_gpu_init — called once after window + GPU are ready
+// on_event    — raw Winit window events
+// on_exit     — deterministic cleanup</code></pre>
+          </div>
+
+          <div class="callout info">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">When to use which?</div>
+              <p><strong>Start with <code>run_simple</code></strong> for prototyping and UI-focused apps. <strong>Graduate to <code>AppBuilder</code></strong> when you need: the ImGui <code>Context</code> (e.g. to create ImNodes contexts), custom GPU textures, raw input handling, or production-grade teardown. In this tutorial, we'll start with <code>run</code> and evolve toward a structured <code>AppBuilder</code> architecture.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#intro" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Introduction</div>
+            </a>
+            <a href="#setup" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Project Setup &amp; Structure →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 03: Project Setup & Structure -->
+        <!-- ============================================ -->
+        <section id="chapter-setup" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 03</div>
+            <h1>Project Setup &amp; Structure</h1>
+            <p class="lead">A well-organized project is the foundation of production-grade Rust. We'll set up our Cargo.toml, establish a module structure following the Rust Book's guidance, and create the scaffolding for our node editor.</p>
+          </div>
+
+          <h2>Creating the Project</h2>
+          <p>Start by creating a new binary crate:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Terminal</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>cargo new node-editor --bin
+cd node-editor</code></pre>
+          </div>
+
+          <h2>Cargo.toml Dependencies</h2>
+          <p>Our project needs three crates from the <code>dear-imgui-rs</code> ecosystem, plus <code>serde</code> for serialization later:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Cargo.toml</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>[package]
+name = "node-editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# The application runner — bundles Winit + WGPU + ImGui
+dear-app = { version = "0.15", features = ["imnodes"] }
+
+# Core ImGui bindings — 0.15.x does not re-export imgui from dear-app,
+# so you need this as an explicit dependency for types like Condition.
+dear-imgui-rs = "0.15"
+
+# ImNodes — the node editor extension for Dear ImGui
+dear-imnodes = "0.15"
+
+# Serialization for application state
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"</code></pre>
+          </div>
+
+          <div class="callout info">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">Why these versions?</div>
+              <p>Because <code>dear-app</code> does <strong>not</strong> re-export <code>imgui</code> in 0.15.x, you must add <code>dear-imgui-rs = "0.15"</code> as an explicit dependency and import from it directly (e.g. <code>use dear_imgui_rs::Condition;</code>). The <code>imnodes</code> feature flag on <code>dear-app</code> compiles in ImNodes support and initializes the global ImNodes context, but note that <code>AddOns::imnodes</code> is a <code>Option&lt;()&gt;</code> presence flag — not the actual <code>Context</code> or <code>EditorContext</code>. To obtain those, use <code>AppBuilder::on_setup</code> (which receives <code>&amp;mut Context</code>) and create the ImNodes contexts manually.</p>
+            </div>
+          </div>
+
+          <h2>Module Structure</h2>
+          <p>The <a href="https://doc.rust-lang.org/stable/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html" target="_blank">Rust Book Chapter 7</a> teaches us to organize code into modules that group related functionality. Here's the structure we'll build toward:</p>
+
+          <div class="file-tree">node-editor/
+<span class="dir">├── src/</span>
+<span class="indent"><span class="file">main.rs</span>          <span class="comment">// Entry point: configures and launches the app</span></span>
+<span class="indent"><span class="file">app.rs</span>           <span class="comment">// Application state struct + frame logic</span></span>
+<span class="indent"><span class="dir">├── graph/</span></span>
+<span class="indent"><span class="indent"><span class="file">mod.rs</span>       <span class="comment">// Re-exports for the graph module</span></span></span>
+<span class="indent"><span class="indent"><span class="file">model.rs</span>     <span class="comment">// Node, Pin, Link data structures</span></span></span>
+<span class="indent"><span class="indent"><span class="file">state.rs</span>      <span class="comment">// GraphState: mutable graph data + ID allocation</span></span></span>
+<span class="indent"><span class="dir">├── ui/</span></span>
+<span class="indent"><span class="indent"><span class="file">mod.rs</span>       <span class="comment">// Re-exports for the UI module</span></span></span>
+<span class="indent"><span class="indent"><span class="file">editor.rs</span>    <span class="comment">// Node editor canvas rendering</span></span></span>
+<span class="indent"><span class="indent"><span class="file">toolbar.rs</span>   <span class="comment">// Toolbar / menu bar rendering</span></span></span>
+<span class="indent"><span class="dir">├── theme.rs</span>        <span class="comment">// Color palette and style configuration</span></span>
+<span class="indent"><span class="file">lib.rs</span>            <span class="comment">// Crate root: declares public modules</span></span>
+<span class="dir">├── Cargo.toml</span>
+<span class="dir">└── README.md</span></div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Modules (Ch. 7)</div>
+              <p>Chapter 7 introduces the module system. Key principles: <strong>separate concerns into modules</strong> (graph data vs UI rendering), <strong>use <code>mod.rs</code> or file-based modules</strong> to declare module roots, and <strong>prefer <code>pub use</code> re-exports</strong> to create a clean public API. We follow all three here.</p>
+            </div>
+          </div>
+
+          <h3>The Separation of Concerns</h3>
+          <p>Our structure separates three concerns:</p>
+          <ul>
+            <li><strong>Data model</strong> (<code>graph/</code>) — pure Rust structs and enums representing the graph. No ImGui imports here.</li>
+            <li><strong>UI rendering</strong> (<code>ui/</code>) — functions that read from the graph model and render ImGui widgets. Mutates graph state in response to user interaction.</li>
+            <li><strong>Application wiring</strong> (<code>app.rs</code>, <code>main.rs</code>) — holds the state struct, configures dear-app, and calls into the UI module each frame.</li>
+          </ul>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Why separate the data model from the UI?</div>
+              <p>This separation makes the graph model testable without a GPU or window. You can write unit tests for link validation, ID allocation, and graph operations using pure Rust — exactly as the Rust Book encourages in <a href="https://doc.rust-lang.org/stable/book/ch11-01-writing-tests.html" target="_blank">Chapter 11.1</a>.</p>
+            </div>
+          </div>
+
+          <h2>Starting with a Minimal main.rs</h2>
+          <p>For now, let's create a minimal <code>main.rs</code> that gets a window on screen. We'll refactor into modules in Chapter 5.</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_app::{RunnerConfig, DearAppError, AddOnsConfig, run};
+use dear_imgui_rs::Condition;
+
+fn main() -> Result&lt;(), DearAppError&gt; {
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        ..Default::default()
+    };
+
+    run(config, AddOnsConfig::auto(), move |ui, _addons| {
+        ui.window("Editor")
+            .size([1000.0, 700.0], Condition::FirstUseEver)
+            .position([40.0, 40.0], Condition::FirstUseEver)
+            .build(|| {
+                ui.text("Node graph editor — scaffold");
+            });
+    })
+}</code></pre>
+          </div>
+
+          <p>Run it with:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Terminal</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>cargo run</code></pre>
+          </div>
+
+          <p>You should see a dark window with a smaller ImGui window inside it titled "Editor". This is the blank canvas we'll fill throughout the tutorial.</p>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Build requirements</div>
+              <p><code>dear-imgui-sys</code> uses prebuilt static libraries by default (the <code>prebuilt</code> feature). If the prebuilt artifacts aren't available for your platform, you may need to build from source — which requires a C/C++ compiler. On Linux, install <code>build-essential</code>, <code>cmake</code>, and <code>pkg-config</code>. On macOS, install Xcode Command Line Tools.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#what-is" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← What is dear-imgui-rs?</div>
+            </a>
+            <a href="#first-window" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Your First Window →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 04: Your First Window -->
+        <!-- ============================================ -->
+        <section id="chapter-first-window" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 04</div>
+            <h1>Your First Window</h1>
+            <p class="lead">Now let's understand the immediate-mode paradigm and the <code>run</code> API by building a simple interactive window with state.</p>
+          </div>
+
+          <h2>Understanding Immediate Mode</h2>
+          <p>In a retained-mode GUI (like Qt or GTK), you create widgets once and the framework holds them. In immediate mode, you re-issue all UI commands <em>every frame</em>. The key insight is:</p>
+
+          <div class="callout info">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">Immediate Mode in One Sentence</div>
+              <p>Your UI function is called 60+ times per second. Each call describes the <em>current</em> state of the UI. Widgets return their current interaction state (was this button clicked? was this value changed?) as return values.</p>
+            </div>
+          </div>
+
+          <h2>The <code>run</code> API</h2>
+          <p><code>run</code> takes three arguments:</p>
+          <ol>
+            <li><strong><code>RunnerConfig</code></strong> — window title, size, theme, docking, and WGPU configuration</li>
+            <li><strong><code>AddOnsConfig</code></strong> — which add-ons (ImPlot, ImNodes, etc.) to enable; use <code>AddOnsConfig::auto()</code> for sensible defaults</li>
+            <li><strong>A closure <code>|ui, addons| { ... }</code></strong> — called every frame with a <code>&amp;Ui</code> reference and <code>&amp;mut AddOns&lt;'_&gt;</code></li>
+          </ol>
+
+          <p>State that needs to persist across frames is captured by the closure via <code>move</code>. The closure owns that state for the lifetime of the application:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs — stateful counter</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_app::{RunnerConfig, DearAppError, AddOnsConfig, run};
+use dear_imgui_rs::Condition;
+
+fn main() -> Result&lt;(), DearAppError&gt; {
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        ..Default::default()
+    };
+
+    // State captured by the closure — persists across frames
+    let mut counter = 0;
+    let mut show_hello = true;
+
+    run(config, AddOnsConfig::auto(), move |ui, _addons| {
+        if show_hello {
+            ui.window("Hello")
+                .opened(&amp;mut show_hello)
+                .size([360.0, 180.0], Condition::FirstUseEver)
+                .build(|| {
+                    ui.text("Hello, world!");
+                    if ui.button("Click me") {
+                        counter += 1;
+                    }
+                    ui.same_line();
+                    ui.text(format!("Counter: {counter}"));
+                });
+        } else {
+            ui.window("Main")
+                .size([280.0, 120.0], Condition::FirstUseEver)
+                .build(|| {
+                    ui.text("Hello window is closed.");
+                    if ui.button("Reopen Hello") {
+                        show_hello = true;
+                    }
+                });
+        }
+    })
+}</code></pre>
+          </div>
+
+          <p>Notice the patterns:</p>
+          <ul>
+            <li><code>Condition::FirstUseEver</code> — the size/position is only applied the first time the window appears. After that, the user can resize/move it freely.</li>
+            <li><code>.opened(&amp;mut show_hello)</code> — creates a close button on the window. When clicked, ImGui sets <code>show_hello</code> to <code>false</code>.</li>
+            <li><code>ui.button("Click me")</code> returns <code>true</code> only on the frame the button is clicked — not every frame it's held.</li>
+            <li><code>ui.same_line()</code> places the next widget on the same line as the previous one.</li>
+          </ul>
+
+          <h2>Condition Flags</h2>
+          <p>The <code>Condition</code> enum controls when a size/position value is applied:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Condition variants</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Applied only the first time the window appears
+Condition::FirstUseEver   // ← most common in practice
+
+// Applied every frame (forces the size/position)
+Condition::Always
+
+// Applied only when the window first appears, ever
+Condition::Once</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">When to use Condition::Always vs FirstUseEver</div>
+              <p>Use <code>FirstUseEver</code> for windows the user should be able to resize and move. Use <code>Always</code> for fixed panels (like a toolbar or status bar) where you want to programmatically control the position every frame.</p>
+            </div>
+          </div>
+
+          <h2>Menus and Docking</h2>
+          <p>Let's add a main menu bar and enable docking — this gives us the foundation of a real editor application:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs — with menu bar and docking</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_app::{
+    RunnerConfig, DockingConfig, DearAppError, AddOnsConfig,
+    run,
+};
+use dear_imgui_rs::Condition;
+
+fn main() -> Result&lt;(), DearAppError&gt; {
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        docking: DockingConfig { enable: true, auto_dockspace: true, ..Default::default() },
+        ..Default::default()
+    };
+
+    let mut show_about = false;
+
+    run(config, AddOnsConfig::auto(), move |ui, _addons| {
+        // Main menu bar
+        if let Some(_mb) = ui.begin_main_menu_bar() {
+            if let Some(_m) = ui.begin_menu("File") {
+                if ui.menu_item("New") {
+                    // TODO: clear graph
+                }
+                if ui.menu_item("Open...") {
+                    // TODO: load graph
+                }
+                ui.separator();
+                if ui.menu_item("Quit") {
+                    // dear-app handles window close
+                }
+            }
+            if let Some(_m) = ui.begin_menu("Help") {
+                if ui.menu_item("About") {
+                    show_about = true;
+                }
+            }
+        }
+
+        // Main editor window
+        ui.window("Node Graph Editor")
+            .size([1000.0, 700.0], Condition::FirstUseEver)
+            .position([40.0, 60.0], Condition::FirstUseEver)
+            .build(|| {
+                ui.text("Editor canvas goes here");
+            });
+
+        // About popup
+        if show_about {
+            ui.window("About")
+                .opened(&amp;mut show_about)
+                .size([300.0, 160.0], Condition::Always)
+                .build(|| {
+                    ui.text("Node Graph Editor");
+                    ui.text("Built with dear-app + dear-imnodes");
+                });
+        }
+    })
+}</code></pre>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Docking requires the config flag</div>
+              <p>Docking is opt-in. You must set <code>docking: DockingConfig { enable: true, ..Default::default() }</code> in your <code>RunnerConfig</code>. Without it, dockspaces and tab-bar docking won't function. Note that <code>dear-app</code> in 0.15.x has <strong>experimental</strong> multi-viewport support (it depends on the backend combination); for full native multi-viewport, consider the raw Winit or SDL3 owning runtimes if you need secondary platform windows.</p>
+            </div>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Closures (Ch. 13.1)</div>
+              <p>The <code>move</code> keyword on our closure transfers ownership of captured variables into the closure. This is essential for <code>run</code> because the closure must outlive the function that creates it. See <a href="https://doc.rust-lang.org/stable/book/ch13-01-closures.html" target="_blank">Chapter 13.1</a> for the full treatment of closures and <code>move</code>.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#setup" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Project Setup &amp; Structure</div>
+            </a>
+            <a href="#architecture" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Application Architecture →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 05: Application Architecture -->
+        <!-- ============================================ -->
+        <section id="chapter-architecture" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 05</div>
+            <h1>Application Architecture</h1>
+            <p class="lead">The closure-based <code>run</code> works for prototypes, but production applications need a structured state owner. Let's refactor into a proper module hierarchy.</p>
+          </div>
+
+          <h2>Why Move Beyond a Single Closure?</h2>
+          <p>As our editor grows, putting everything in one <code>move</code> closure creates problems:</p>
+          <ul>
+            <li><strong>Untestable logic</strong> — graph operations are tangled with ImGui calls</li>
+            <li><strong>Mental overhead</strong> — hundreds of lines in one closure</li>
+            <li><strong>No separation</strong> — data model, UI, and app wiring are all mixed</li>
+          </ul>
+
+          <p>The Rust Book's <a href="https://doc.rust-lang.org/stable/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html" target="_blank">Chapter 7</a> directly addresses this: "As your project grows, you'll want to organize your code into modules."</p>
+
+          <h2>Defining the Graph Data Model</h2>
+          <p>Let's start with the pure data model — no ImGui, no rendering, just structs:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/graph/model.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use serde::{Deserialize, Serialize};
+
+/// A unique identifier for a node in the graph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct NodeId(pub i32);
+
+/// A unique identifier for a pin (input or output endpoint).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PinId(pub i32);
+
+/// A unique identifier for a link connecting two pins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LinkId(pub i32);
+
+/// The kind of pin — determines which side of the node it appears on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PinKind {
+    Input,
+    Output,
+}
+
+/// A node in the graph. The data model is intentionally simple —
+/// the UI layer is responsible for rendering title bars, pins, etc.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Node {
+    pub id: NodeId,
+    pub title: String,
+    pub pins: Vec&lt;Pin&gt;,
+}
+
+/// A pin on a node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pin {
+    pub id: PinId,
+    pub kind: PinKind,
+    pub label: String,
+}
+
+/// A link connecting an output pin to an input pin.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Link {
+    pub id: LinkId,
+    pub from: PinId,  // output pin
+    pub to: PinId,    // input pin
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Structs (Ch. 5) &amp; Enums (Ch. 6)</div>
+              <p>Our model uses the core Rust building blocks: <strong>structs</strong> (<a href="https://doc.rust-lang.org/stable/book/ch05-00-structs.html" target="_blank">Ch. 5</a>) for data records and <strong>enums</strong> (<a href="https://doc.rust-lang.org/stable/book/ch06-00-enums.html" target="_blank">Ch. 6</a>) for variants like <code>PinKind::Input</code> vs <code>PinKind::Output</code>. Deriving <code>Debug</code>, <code>Clone</code>, and <code>Serialize</code> makes them ergonomic and serializable.</p>
+            </div>
+          </div>
+
+          <h2>Graph State with ID Allocation</h2>
+          <p>The <code>GraphState</code> struct holds the mutable graph and manages ID allocation — a common pattern for editors where entities are created and destroyed at runtime:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/graph/state.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use super::model::{Link, LinkId, Node, NodeId, Pin, PinId, PinKind};
+
+/// Mutable graph state. This is the single source of truth for the
+/// graph's structure. The UI layer reads from and writes to this.
+#[derive(Debug, Clone, Default)]
+pub struct GraphState {
+    pub nodes: Vec&lt;Node&gt;,
+    pub links: Vec&lt;Link&gt;,
+    next_node_id: i32,
+    next_pin_id: i32,
+    next_link_id: i32,
+}
+
+impl GraphState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Allocate the next available node ID.
+    pub fn next_node_id(&amp;mut self) -> NodeId {
+        let id = NodeId(self.next_node_id);
+        self.next_node_id += 1;
+        id
+    }
+
+    /// Allocate the next available pin ID.
+    pub fn next_pin_id(&amp;mut self) -> PinId {
+        let id = PinId(self.next_pin_id);
+        self.next_pin_id += 1;
+        id
+    }
+
+    /// Allocate the next available link ID.
+    pub fn next_link_id(&amp;mut self) -> LinkId {
+        let id = LinkId(self.next_link_id);
+        self.next_link_id += 1;
+        id
+    }
+
+    /// Add a node to the graph.
+    pub fn add_node(&amp;mut self, node: Node) {
+        self.nodes.push(node);
+    }
+
+    /// Add a link, returning false if it would create a duplicate
+    /// (same output → same input) or if the pin directions are invalid
+    /// (`from` must be an output pin, `to` must be an input pin).
+    pub fn add_link(&amp;mut self, link: Link) -> bool {
+        // Validate pin directions: `from` must be Output, `to` must be Input.
+        // This enforces the invariant at the model level, not just the UI layer.
+        let from_kind = self.nodes.iter()
+            .flat_map(|n| &amp;n.pins)
+            .find(|p| p.id == link.from)
+            .map(|p| &amp;p.kind);
+        let to_kind = self.nodes.iter()
+            .flat_map(|n| &amp;n.pins)
+            .find(|p| p.id == link.to)
+            .map(|p| &amp;p.kind);
+
+        match (from_kind, to_kind) {
+            (Some(PinKind::Output), Some(PinKind::Input)) => {}
+            _ => return false,  // Invalid direction or unknown pin
+        }
+
+        let exists = self.links.iter().any(|l| {
+            l.from == link.from &amp;&amp; l.to == link.to
+        });
+        if !exists {
+            self.links.push(link);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove a link by ID.
+    pub fn remove_link(&amp;mut self, id: LinkId) {
+        self.links.retain(|l| l.id != id);
+    }
+
+    /// Remove all links connected to a given pin.
+    pub fn remove_links_for_pin(&amp;mut self, pin: PinId) {
+        self.links.retain(|l| l.from != pin &amp;&amp; l.to != pin);
+    }
+
+    /// Remove a node and all its links by ID.
+    pub fn remove_node(&amp;mut self, id: NodeId) {
+        // Collect this node's pins, then remove all attached links
+        // in a single pass (O(m) instead of O(k × m)).
+        let pins_to_remove: Vec&lt;PinId&gt; = self.nodes
+            .iter()
+            .find(|n| n.id == id)
+            .map(|n| n.pins.iter().map(|p| p.id).collect())
+            .unwrap_or_default();
+
+        self.links.retain(|l| {
+            !pins_to_remove.contains(&amp;l.from) &amp;&amp;
+            !pins_to_remove.contains(&amp;l.to)
+        });
+        self.nodes.retain(|n| n.id != id);
+    }
+}</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">This code is 100% testable</div>
+              <p>Notice: <code>GraphState</code> has zero ImGui dependencies. You can write unit tests for link validation, ID allocation, and node removal without a GPU or window. This is the payoff of separating the data model from the UI.</p>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">IDs are never recycled</div>
+              <p>The <code>next_node_id</code>, <code>next_pin_id</code>, and <code>next_link_id</code> counters <strong>monotonically increment and never decrease</strong>, even when entities are deleted. This is a deliberate simplification: recycling IDs risks use-after-free bugs if stale references linger. For a long-running editor that creates and deletes millions of entities, you'd eventually want a free-list or generational index scheme (e.g. the <code>slotmap</code> crate). For this tutorial, <code>i32</code> overflow is practically unreachable. Note also that these counters are serialized with <code>GraphState</code> via serde — when you save and reload a graph, the IDs continue from where they left off, but ImNodes' <em>internal</em> ID space restarts. The <code>positions_initialized</code> flag handles re-syncing positions on reload.</p>
+            </div>
+          </div>
+
+          <h2>Module Declarations</h2>
+          <p>Wire up the modules in <code>lib.rs</code> and re-export the public API:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/lib.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>pub mod graph;
+pub mod ui;
+pub mod theme;
+
+// Re-export key types for convenience
+pub use graph::GraphState;
+pub use graph::model::{Link, LinkId, Node, NodeId, Pin, PinId, PinKind};</code></pre>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/graph/mod.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>pub mod model;
+pub mod state;
+
+pub use model::{Link, LinkId, Node, NodeId, Pin, PinId, PinKind};
+pub use state::GraphState;</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Re-exporting with pub use (Ch. 7.4)</div>
+              <p><a href="https://doc.rust-lang.org/stable/book/ch07-04-bringing-paths-into-scope-with-the-use-keyword.html" target="_blank">Chapter 7.4</a> shows how <code>pub use</code> creates a clean public API by re-exporting types from nested modules. Consumers of your crate can write <code>use node_editor::GraphState</code> instead of <code>use node_editor::graph::state::GraphState</code>.</p>
+            </div>
+          </div>
+
+          <h2>The Application State Struct</h2>
+          <p>Now let's create <code>app.rs</code> — the state owner that <code>run</code> will capture:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/app.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use crate::graph::{GraphState, Node, Pin, PinKind};
+
+/// Application state — owned by the main closure and
+/// passed to UI rendering functions each frame.
+pub struct App {
+    pub graph: GraphState,
+    pub show_about: bool,
+    pub positions_initialized: bool,
+}
+
+impl App {
+    pub fn new() -> Self {
+        let mut graph = GraphState::new();
+
+        // Seed with a couple of example nodes
+        let n1 = graph.next_node_id();
+        let p1_in = graph.next_pin_id();
+        let p1_out = graph.next_pin_id();
+        graph.add_node(Node {
+            id: n1,
+            title: "Source".to_string(),
+            pins: vec![
+                Pin { id: p1_in, kind: PinKind::Input, label: "In".into() },
+                Pin { id: p1_out, kind: PinKind::Output, label: "Out".into() },
+            ],
+        });
+
+        let n2 = graph.next_node_id();
+        let p2_in = graph.next_pin_id();
+        let p2_out = graph.next_pin_id();
+        graph.add_node(Node {
+            id: n2,
+            title: "Sink".to_string(),
+            pins: vec![
+                Pin { id: p2_in, kind: PinKind::Input, label: "In".into() },
+                Pin { id: p2_out, kind: PinKind::Output, label: "Out".into() },
+            ],
+        });
+
+        Self {
+            graph,
+            show_about: false,
+            positions_initialized: false,
+        }
+    }
+}</code></pre>
+          </div>
+
+          <h2>Updated main.rs</h2>
+          <p>Now <code>main.rs</code> is tiny — it just configures dear-app and delegates to the modules:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>mod app;
+mod graph;
+mod theme;
+mod ui;
+
+use app::App;
+use dear_app::{
+    RunnerConfig, DockingConfig, DearAppError, AddOnsConfig,
+    run,
+};
+use dear_imgui_rs::Condition;
+
+fn main() -> Result&lt;(), DearAppError&gt; {
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        docking: DockingConfig { enable: true, auto_dockspace: true, ..Default::default() },
+        ..Default::default()
+    };
+
+    let mut app = App::new();
+
+    run(config, AddOnsConfig::auto(), move |ui, _addons| {
+        crate::ui::render(ui, &amp;mut app);
+    })
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Separation of Concerns (Ch. 7 &amp; 17)</div>
+              <p>This architecture follows two Rust Book principles: <strong>modules group related functionality</strong> (Ch. 7) and <strong>the object-oriented pattern of separating data from behavior</strong> (Ch. 17.3). Our <code>App</code> struct owns state; <code>ui::render</code> is a free function that borrows it. This is more idiomatic Rust than cramming everything into impl methods.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#first-window" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Your First Window</div>
+            </a>
+            <a href="#node-editor" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Introducing the Node Editor →</div>
+            </a>
+          </div>
+        </section>
+
+<!-- ============================================ -->
+        <!-- Chapter 06: Introducing the Node Editor -->
+        <!-- ============================================ -->
+        <section id="chapter-node-editor" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 06</div>
+            <h1>Introducing the Node Editor</h1>
+            <p class="lead">Now we bring in <code>dear-imnodes</code> — the node editor extension that turns our blank ImGui window into an interactive canvas for nodes and connections.</p>
+          </div>
+
+          <h2>What is ImNodes?</h2>
+          <p><a href="https://github.com/Nelarius/imnodes" target="_blank">ImNodes</a> is a small, dependency-free node editor extension for Dear ImGui. It provides an immediate-mode API for creating nodes with input/output pins, links between them, selection, and a minimap. The <code>dear-imnodes</code> crate provides safe, idiomatic Rust bindings with RAII tokens and strongly-typed IDs.</p>
+
+          <p>The key concepts are:</p>
+          <div class="card-grid">
+            <div class="card">
+              <div class="card-icon">🔲</div>
+              <h4>Editor Canvas</h4>
+              <p>The scrollable, zoomable workspace where nodes live. Created with <code>imnodes_editor()</code>.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">📦</div>
+              <h4>Nodes</h4>
+              <p>Draggable boxes with title bars. Each has a unique <code>NodeId</code>.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">📌</div>
+              <h4>Pins</h4>
+              <p>Input/output endpoints on nodes. Each has a unique <code>PinId</code> and a shape.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">🔗</div>
+              <h4>Links</h4>
+              <p>Connections from an output pin to an input pin. Each has a <code>LinkId</code>.</p>
+            </div>
+          </div>
+
+          <h2>Setting Up the ImNodes Context</h2>
+          <p>ImNodes requires a global <code>Context</code> and per-editor <code>EditorContext</code> objects. With dear-app's <code>imnodes</code> feature, these are managed for you and exposed through the frame context's add-ons. But we can also create them manually for full control:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Creating ImNodes contexts</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imnodes as imnodes;
+use dear_imgui_rs::Context;
+
+// The global ImNodes context — tied to the ImGui context
+let mut imgui_context = Context::create();
+
+// Create the ImNodes context (must outlive all editor contexts)
+let nodes_context = imnodes::Context::create(&amp;imgui_context);
+
+// Create one or more editor contexts (one per independent editor)
+let editor_context = nodes_context.create_editor_context();</code></pre>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Drop ordering matters</div>
+              <p>Native ImNodes state is tied to the owning ImGui context. If you store both <code>Context</code> and <code>EditorContext</code> in the same struct, <strong>declare the editor context before the ImGui context</strong> so it drops first. Otherwise you'll get a use-after-free on shutdown.</p>
+            </div>
+          </div>
+
+          <h2>Storing Contexts in App State</h2>
+          <p>Let's update our <code>App</code> struct to hold the ImNodes contexts. Since the <code>run</code> closure only receives <code>&amp;Ui</code> and <code>&amp;mut AddOns&lt;'_&gt;</code> (where <code>AddOns::imnodes</code> is just a <code>Option&lt;()&gt;</code> presence flag, not the actual context), we create our own ImNodes contexts manually. We obtain the ImGui <code>Context</code> via <code>AppBuilder::on_setup</code>:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/app.rs — with ImNodes contexts</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use crate::graph::{GraphState, Node, Pin, PinKind};
+use dear_imnodes as imnodes;
+
+pub struct App {
+    pub graph: GraphState,
+    pub nodes_context: imnodes::Context,
+    pub editor_context: imnodes::EditorContext,
+    pub show_about: bool,
+    pub positions_initialized: bool,
+}
+
+impl App {
+    pub fn new(imgui_context: &amp;mut dear_imgui_rs::Context) -> Self {
+        let nodes_context = imnodes::Context::create(imgui_context);
+        let editor_context = nodes_context.create_editor_context();
+
+        let mut graph = GraphState::new();
+
+        // Seed with example nodes (same as Chapter 5)
+        let n1 = graph.next_node_id();
+        let p1_in = graph.next_pin_id();
+        let p1_out = graph.next_pin_id();
+        graph.add_node(Node {
+            id: n1, title: "Source".into(),
+            pins: vec![
+                Pin { id: p1_in, kind: PinKind::Input, label: "In".into() },
+                Pin { id: p1_out, kind: PinKind::Output, label: "Out".into() },
+            ],
+        });
+
+        let n2 = graph.next_node_id();
+        let p2_in = graph.next_pin_id();
+        graph.add_node(Node {
+            id: n2, title: "Sink".into(),
+            pins: vec![
+                Pin { id: p2_in, kind: PinKind::Input, label: "In".into() },
+            ],
+        });
+
+        Self {
+            graph,
+            nodes_context,
+            editor_context,
+            show_about: false,
+            positions_initialized: false,
+        }
+    }
+}</code></pre>
+          </div>
+
+          <div class="callout info">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">Updated <code>main.rs</code> — using <code>AppBuilder</code></div>
+              <p>Now that <code>App::new()</code> requires the ImGui <code>Context</code>, we switch from <code>run</code> to <code>AppBuilder</code>, whose <code>on_setup</code> callback receives <code>&amp;mut Context</code> before the first frame. We create the <code>App</code> there and move it into the per-frame <code>on_frame</code> closure:</p>
+            </div>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs — with AppBuilder</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>mod app;
+mod graph;
+mod ui;
+
+use app::App;
+use dear_app::{
+    RunnerConfig, DockingConfig, DearAppError, AddOnsConfig,
+    AppBuilder,
+};
+use dear_imgui_rs::Condition;
+
+fn main() -&gt; Result&lt;(), DearAppError&gt; {
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        docking: DockingConfig { enable: true, auto_dockspace: true, ..Default::default() },
+        ..Default::default()
+    };
+
+    let mut app: Option&lt;App&gt; = None;
+
+    AppBuilder::new()
+        .with_config(config)
+        .with_addons(AddOnsConfig::auto())
+        .on_setup(|ctx| {
+            // ctx: &amp;mut dear_imgui_rs::Context — available before first frame
+            app = Some(App::new(ctx));
+        })
+        .on_frame(move |ui| {
+            if let Some(ref mut a) = app {
+                crate::ui::render(ui, a);
+            }
+        })
+        .run()
+}</code></pre>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Why <code>Option&lt;App&gt;</code>?</div>
+              <p><code>on_setup</code> and <code>on_frame</code> are separate closures that capture by move. We can't pass the <code>App</code> directly between them, so we stash it in an <code>Option</code> declared outside both closures. <code>on_setup</code> initializes it (the ImGui <code>Context</code> is ready), and <code>on_frame</code> borrows it each frame. This is the standard <code>AppBuilder</code> pattern in 0.15.x for bridging setup-time and per-frame state.</p>
+            </div>
+          </div>
+          <p>Each frame, we begin an editor session by calling <code>ui.imnodes_editor()</code> — an extension method added by the <code>ImNodesExt</code> trait. This returns a <code>NodeEditor</code> RAII token. We render all nodes, links, and then call <code>.end()</code> to finalize and get a <code>PostEditor</code> for querying interactions:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Editor frame lifecycle</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imnodes::ImNodesExt;
+
+// Inside the per-frame closure:
+ui.window("Node Editor")
+    .size([1000.0, 700.0], Condition::FirstUseEver)
+    .build(|| {
+        // Begin the editor — returns NodeEditor RAII token
+        let editor = ui.imnodes_editor(
+            &amp;app.nodes_context,
+            Some(&amp;app.editor_context),
+        );
+
+        // Enable standard interactions
+        editor.enable_link_detach_with_ctrl();
+        editor.enable_multiple_select_with_ctrl();
+
+        // ... render nodes and links here ...
+
+        // End the editor — returns PostEditor for queries
+        let post = editor.end();
+
+        // ... query interactions (new links, deleted links, etc.) ...
+    });</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Lifetimes &amp; Borrowing (Ch. 4)</div>
+              <p>The editor borrows the contexts immutably. The <code>PostEditor</code> is returned by value. This pattern — borrow during the frame, return owned results — is fundamental Rust. See <a href="https://doc.rust-lang.org/stable/book/ch04-02-references-and-borrowing.html" target="_blank">Chapter 4.2</a> on borrowing.</p>
+            </div>
+          </div>
+
+          <h2>Creating the UI Module</h2>
+          <p>Let's create <code>src/ui/mod.rs</code> and <code>src/ui/editor.rs</code> — the rendering layer that draws our graph model:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/ui/mod.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>pub mod editor;
+pub mod toolbar;
+
+use dear_imgui_rs::Ui;
+use crate::app::App;
+
+/// Top-level render function called every frame.
+pub fn render(ui: &amp;Ui, app: &amp;mut App) {
+    crate::ui::toolbar::render_menu_bar(ui, app);
+    crate::ui::editor::render_editor(ui, app);
+}</code></pre>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/ui/editor.rs — minimal canvas</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imgui_rs::{Condition, Ui};
+use dear_imnodes::{ImNodesExt, MiniMapLocation};
+use crate::app::App;
+
+pub fn render_editor(ui: &amp;Ui, app: &amp;mut App) {
+    ui.window("Node Graph Editor")
+        .size([1000.0, 700.0], Condition::FirstUseEver)
+        .position([40.0, 60.0], Condition::FirstUseEver)
+        .build(|| {
+            let editor = ui.imnodes_editor(
+                &amp;app.nodes_context,
+                Some(&amp;app.editor_context),
+            );
+
+            editor.enable_link_detach_with_ctrl();
+            editor.enable_multiple_select_with_ctrl();
+
+            // Set initial positions once
+            if !app.positions_initialized {
+                // Will be filled in Chapter 7
+                app.positions_initialized = true;
+            }
+
+            // Nodes and links rendered here in Chapter 7+8
+
+            // MiniMap in the bottom-right corner
+            editor.minimap(0.25, MiniMapLocation::BottomRight);
+
+            let _post = editor.end();
+
+            // Interaction queries go here in Chapter 8+
+        });
+}</code></pre>
+          </div>
+
+          <p>Run it and you'll see an empty grid canvas with a minimap — the foundation of our node editor. It's not very useful yet, but it's an interactive, scrollable, zoomable workspace.</p>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Try it: scroll and zoom</div>
+              <p>Right-click drag to pan the canvas. Use the mouse wheel to zoom. The minimap shows the entire graph and lets you navigate by clicking. These interactions are built into ImNodes — we get them for free.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#architecture" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Application Architecture</div>
+            </a>
+            <a href="#nodes" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Building Nodes &amp; Pins →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 07: Building Nodes & Pins -->
+        <!-- ============================================ -->
+        <section id="chapter-nodes" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 07</div>
+            <h1>Building Nodes &amp; Pins</h1>
+            <p class="lead">Let's populate our canvas with nodes that have title bars, input pins, and output pins — reading directly from our <code>GraphState</code> data model.</p>
+          </div>
+
+          <h2>The Node Rendering Pattern</h2>
+          <p>Each node is created with <code>editor.node(node_id)</code>, which returns a <code>NodeToken</code> (RAII). The token provides methods for rendering the node's content: title bars, input attributes, and output attributes. Each attribute also returns its own RAII token.</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Node anatomy</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// A single node with a title bar and two pins
+let n = editor.node(node_id);
+
+// Title bar — rendered as a header
+n.title_bar(|| {
+    ui.text("My Node");
+});
+
+// Input pin — appears on the left side
+{
+    let _attr = editor.input_attr(pin_id, imnodes::PinShape::CircleFilled);
+    ui.text("In");
+    // _attr dropped here → EndAttribute called
+}
+
+// Output pin — appears on the right side
+{
+    let _attr = editor.output_attr(pin_out_id, imnodes::PinShape::QuadFilled);
+    ui.text("Out");
+    // _attr dropped here → EndAttribute called
+}
+
+// n dropped here → EndNode called</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Drop vs explicit <code>.end()</code></div>
+              <p>Both approaches are valid and compile fine (calling <code>.end()</code> consumes the token, so Drop won't double-call <code>EndNode</code>). Use <strong>Drop</strong> (let the token fall out of scope) when the node's scope is naturally delimited by a block — as in the example above. Use <strong>explicit <code>.end()</code></strong> when you need the node to close at a specific point mid-block, such as inside a <code>for</code> loop where you iterate pins before moving to the next node. The full <code>render_editor</code> code later in this chapter uses <code>n.end()</code> for this reason. Pick one style per codebase and be consistent.</p>
+            </div>
+          </div>
+
+          <h2>Pin Shapes</h2>
+          <p>ImNodes offers several pin shapes. Use different shapes to visually distinguish pin types:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>PinShape variants</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Outline shapes (hollow)
+imnodes::PinShape::Circle       // ○
+imnodes::PinShape::Quad         // □
+imnodes::PinShape::Triangle     // △
+
+// Filled shapes (solid)
+imnodes::PinShape::CircleFilled    // ●
+imnodes::PinShape::QuadFilled      // ■
+imnodes::PinShape::TriangleFilled  // ▲</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Design convention</div>
+              <p>A common convention: use <strong>filled shapes for outputs</strong> and <strong>outline shapes for inputs</strong>. This gives users a visual cue: you pull <em>from</em> solid pins and push <em>into</em> hollow pins.</p>
+            </div>
+          </div>
+
+          <h2>Setting Initial Positions</h2>
+          <p>Nodes appear at [0, 0] by default. Set positions before rendering the first frame using <code>set_node_pos_grid</code>:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Initial node positioning</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Set initial positions (only on first frame)
+if !app.positions_initialized {
+    let raw_id = |id: &amp;NodeId| imnodes::NodeId::new(id.0);
+    editor.set_node_pos_grid(raw_id(&amp;node_id), [100.0, 100.0]);
+    app.positions_initialized = true;
+}</code></pre>
+          </div>
+
+          <h2>Rendering All Nodes from GraphState</h2>
+          <p>Now let's write the complete <code>render_editor</code> function that iterates our data model and renders every node with its pins:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/ui/editor.rs — full node rendering</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imgui_rs::{Condition, Ui};
+use dear_imnodes::{self as imnodes, ImNodesExt, MiniMapLocation};
+use crate::app::App;
+use crate::graph::model::{PinKind, NodeId};
+
+/// Convert our model NodeId to an ImNodes NodeId
+fn to_imnodes_id(id: NodeId) -> imnodes::NodeId {
+    imnodes::NodeId::new(id.0)
+}
+
+/// Convert our model PinId to an ImNodes PinId
+fn to_imnodes_pin(id: crate::graph::PinId) -> imnodes::PinId {
+    imnodes::PinId::new(id.0)
+}
+
+pub fn render_editor(ui: &amp;Ui, app: &amp;mut App) {
+    ui.window("Node Graph Editor")
+        .size([1000.0, 700.0], Condition::FirstUseEver)
+        .position([40.0, 60.0], Condition::FirstUseEver)
+        .build(|| {
+            let editor = ui.imnodes_editor(
+                &amp;app.nodes_context,
+                Some(&amp;app.editor_context),
+            );
+
+            editor.enable_link_detach_with_ctrl();
+            editor.enable_multiple_select_with_ctrl();
+
+            // Set initial positions on first frame
+            if !app.positions_initialized {
+                for (i, node) in app.graph.nodes.iter().enumerate() {
+                    let x = 100.0 + (i as f32) * 250.0;
+                    let y = 100.0;
+                    editor.set_node_pos_grid(to_imnodes_id(node.id), [x, y]);
+                }
+                app.positions_initialized = true;
+            }
+
+            // Render all nodes from the graph model
+            for node in &amp;app.graph.nodes {
+                let n = editor.node(to_imnodes_id(node.id));
+                n.title_bar(|| ui.text(&amp;node.title));
+
+                for pin in &amp;node.pins {
+                    let im_pin = to_imnodes_pin(pin.id);
+                    match pin.kind {
+                        PinKind::Input => {
+                            let _attr = editor.input_attr(
+                                im_pin,
+                                imnodes::PinShape::CircleFilled,
+                            );
+                            ui.text(&amp;pin.label);
+                        }
+                        PinKind::Output => {
+                            let _attr = editor.output_attr(
+                                im_pin,
+                                imnodes::PinShape::QuadFilled,
+                            );
+                            ui.text(&amp;pin.label);
+                        }
+                    }
+                }
+                n.end();
+            }
+
+            // Links will be rendered in Chapter 8
+            // ...
+
+            // MiniMap
+            editor.minimap(0.25, MiniMapLocation::BottomRight);
+
+            let _post = editor.end();
+        });
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Pattern Matching (Ch. 6.2 &amp; Ch. 18.3)</div>
+              <p>We use <code>match pin.kind</code> to render input vs output pins differently. Pattern matching on enums is covered in <a href="https://doc.rust-lang.org/stable/book/ch06-02-match.html" target="_blank">Chapter 6.2</a> and advanced patterns in <a href="https://doc.rust-lang.org/stable/book/ch18-03-pattern-syntax.html" target="_blank">Chapter 18.3</a>.</p>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">ID uniqueness is critical</div>
+              <p>ImNodes identifies nodes and pins by integer ID. If two nodes share the same ID, or two pins share an ID, the editor will behave unpredictably. Our <code>GraphState</code> allocator ensures uniqueness by incrementing a counter. <strong>Never hardcode IDs in rendering code</strong> — always use the model's allocated IDs.</p>
+            </div>
+          </div>
+
+          <h2>Borrowing Challenge: Iterating Nodes</h2>
+          <p>Notice we iterate <code>&amp;app.graph.nodes</code> (immutable borrow). Even though <code>render_editor</code> takes <code>app: &amp;mut App</code>, the borrow checker tracks that <strong>during the loop only a shared reborrow of <code>app.graph.nodes</code> is live</strong> — the mutable borrow from the function parameter is not actively used at that point. This is not a "sub-borrow" of <code>&amp;app</code>; rather, Rust's two-phase borrow analysis sees that the mutable borrow is dormant while the shared reborrow is active. But if we tried to mutate <code>app.graph</code> inside the loop (e.g., adding a link), the mutable borrow would re-activate and conflict with the shared borrow. So we collect the interaction result first, end the shared borrow, then mutate:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Borrow pattern for mutation</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// 1. Collect interaction data (immutable borrow of app)
+let new_link: Option&lt;(_, _)&gt; = {
+    let editor = ui.imnodes_editor(
+        &amp;app.nodes_context,
+        Some(&amp;app.editor_context),
+    );
+    // ... render nodes (borrows &amp;app.graph immutably) ...
+    let post = editor.end();
+    post.is_link_created().map(|lc| (lc.start_attr, lc.end_attr))
+};
+
+// 2. Now mutate app.graph (mutable borrow)
+if let Some((start, end)) = new_link {
+    let link = crate::graph::Link {
+        id: app.graph.next_link_id(),
+        from: crate::graph::PinId(start.raw()),
+        to: crate::graph::PinId(end.raw()),
+    };
+    app.graph.add_link(link);
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Ownership &amp; Borrowing (Ch. 4)</div>
+              <p>This collect-then-mutate pattern is the standard solution to the "can't borrow mutably while immutably borrowed" problem. See <a href="https://doc.rust-lang.org/stable/book/ch04-00-understanding-ownership.html" target="_blank">Chapter 4</a> for ownership fundamentals.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#node-editor" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Introducing the Node Editor</div>
+            </a>
+            <a href="#links" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Links &amp; Connections →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 08: Links & Connections -->
+        <!-- ============================================ -->
+        <section id="chapter-links" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 08</div>
+            <h1>Links &amp; Connections</h1>
+            <p class="lead">Nodes are useful only when connected. Let's render existing links, detect new connections made by the user, and handle link deletion.</p>
+          </div>
+
+          <h2>Rendering Existing Links</h2>
+          <p>Links are drawn inside the editor frame, before <code>editor.end()</code>. Each link connects an output pin to an input pin:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Rendering links</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Inside the editor frame, after rendering all nodes:
+for link in &amp;app.graph.links {
+    editor.link(
+        imnodes::LinkId::new(link.id.0),
+        imnodes::PinId::new(link.from.0),
+        imnodes::PinId::new(link.to.0),
+    );
+}</code></pre>
+          </div>
+
+          <h2>The PostEditor Object</h2>
+          <p>Calling <code>editor.end()</code> returns a <code>PostEditor</code> token. All interaction queries — link creation, link destruction, selection — happen through this object <em>after</em> the editor frame ends:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>PostEditor queries</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>let post = editor.end();
+
+// Was a new link created by drag-connecting pins?
+if let Some(link) = post.is_link_created() {
+    // link.start_attr and link.end_attr are PinIds
+}
+
+// Was a link destroyed (ctrl+click dragged off)?
+if let Some(link_id) = post.is_link_destroyed() {
+    // link_id is the LinkId of the destroyed link
+}
+
+// Was a link dropped (drag started but not connected)?
+if let Some(start_attr) = post.is_link_dropped(true) {
+    // true = include detached (ctrl+click) drops
+}
+
+// Selection queries
+let sel_nodes = post.selected_nodes();   // Vec&lt;NodeId&gt;
+let sel_links = post.selected_links();   // Vec&lt;LinkId&gt;
+
+// Hovered elements
+let hovered_node = post.hovered_node();  // Option&lt;NodeId&gt;
+let hovered_link = post.hovered_link();  // Option&lt;LinkId&gt;
+let editor_hovered = post.is_editor_hovered(); // bool
+
+// Clear the selection
+post.clear_selection();</code></pre>
+          </div>
+
+          <h2>Handling New Link Creation</h2>
+          <p>When a user drags from one pin to another, ImNodes reports the event through <code>is_link_created()</code>. We need to:</p>
+          <ol>
+            <li>Determine which pin is the output and which is the input</li>
+            <li>Validate the connection (no duplicates, correct direction)</li>
+            <li>Create a <code>Link</code> in our <code>GraphState</code></li>
+          </ol>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Link creation handler</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Collect the new link request (immutable borrow)
+let new_link = {
+    let editor = ui.imnodes_editor(
+        &amp;app.nodes_context,
+        Some(&amp;app.editor_context),
+    );
+    // ... render nodes and links ...
+    let post = editor.end();
+    post.is_link_created().map(|lc| (lc.start_attr, lc.end_attr))
+};
+
+// Process it (mutable borrow)
+if let Some((pin_a, pin_b)) = new_link {
+    // Determine which is output and which is input
+    if let Some((from, to)) = classify_link_pins(
+        pin_a.raw(),
+        pin_b.raw(),
+        &amp;app.graph,
+    ) {
+        let link = crate::graph::Link {
+            id: app.graph.next_link_id(),
+            from,
+            to,
+        };
+        app.graph.add_link(link);
+    }
+}
+
+/// Determine which pin is an output and which is an input.
+/// Returns `Some((output_pin, input_pin))` when the pair is valid,
+/// or `None` if both pins have the same direction or aren't found.
+fn classify_link_pins(
+    a: i32,
+    b: i32,
+    graph: &amp;crate::graph::GraphState,
+) -> Option&lt;(crate::graph::PinId, crate::graph::PinId)&gt; {
+    let find_pin = |raw: i32| {
+        graph.nodes.iter()
+            .flat_map(|n| &amp;n.pins)
+            .find(|p| p.id.0 == raw)
+    };
+
+    let pin_a = find_pin(a);
+    let pin_b = find_pin(b);
+
+    match (pin_a, pin_b) {
+        (Some(a), Some(b)) if a.kind == PinKind::Output
+            &amp;&amp; b.kind == PinKind::Input =>
+        {
+            Some((a.id, b.id))
+        }
+        (Some(a), Some(b)) if a.kind == PinKind::Input
+            &amp;&amp; b.kind == PinKind::Output =>
+        {
+            Some((b.id, a.id))
+        }
+        _ => None,  // Invalid: same direction or not found
+    }
+}</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Link validation is testable</div>
+              <p>The <code>classify_link_pins</code> function is pure Rust — no ImGui dependency. Write a unit test to verify it correctly rejects connecting two inputs or two outputs. This is the payoff of the data/UI separation from Chapter 5.</p>
+            </div>
+          </div>
+
+          <h2>Handling Link Deletion</h2>
+          <p>Links can be deleted two ways: ctrl+click dragging a link to detach it, or through a context menu. Both are handled through <code>PostEditor</code>:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Link deletion handler</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Collect destroyed links
+let destroyed = {
+    let editor = ui.imnodes_editor(
+        &amp;app.nodes_context,
+        Some(&amp;app.editor_context),
+    );
+    // ... render nodes and links ...
+    let post = editor.end();
+    post.is_link_destroyed()
+};
+
+// Remove from graph
+if let Some(link_id) = destroyed {
+    let id = crate::graph::LinkId(link_id.raw());
+    app.graph.remove_link(id);
+}
+
+// Or: delete all selected links via a button
+if ui.button("Delete Selected Links") {
+    let editor = ui.imnodes_editor(
+        &amp;app.nodes_context,
+        Some(&amp;app.editor_context),
+    );
+    let post = editor.end();
+    let selected: Vec&lt;_&gt; = post.selected_links()
+        .iter()
+        .map(|id| crate::graph::LinkId(id.raw()))
+        .collect();
+    for id in selected {
+        app.graph.remove_link(id);
+    }
+    post.clear_selection();
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Error Handling (Ch. 9)</div>
+              <p>Think of link validation as error handling. Instead of panicking when a user tries an invalid connection, we gracefully return <code>None</code> and skip the operation. This follows the Rust Book's guidance in <a href="https://doc.rust-lang.org/stable/book/ch09-00-error-handling.html" target="_blank">Chapter 9</a>: "Rust groups errors into two major categories: recoverable and unrecoverable." Invalid links are recoverable — return <code>Option</code> or <code>Result</code>.</p>
+            </div>
+          </div>
+
+          <h2>Complete Editor with Links</h2>
+          <p>Putting it all together, here's the complete <code>render_editor</code> with node rendering, link rendering, and link creation/deletion handling:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/ui/editor.rs — complete</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imgui_rs::{Condition, Ui};
+use dear_imnodes::{self as imnodes, ImNodesExt, MiniMapLocation};
+use crate::app::App;
+use crate::graph::model::{PinKind, NodeId, PinId, LinkId};
+
+fn to_im_id(id: NodeId) -> imnodes::NodeId { imnodes::NodeId::new(id.0) }
+fn to_im_pin(id: PinId) -> imnodes::PinId { imnodes::PinId::new(id.0) }
+fn to_im_link(id: LinkId) -> imnodes::LinkId { imnodes::LinkId::new(id.0) }
+
+pub fn render_editor(ui: &amp;Ui, app: &amp;mut App) {
+    ui.window("Node Graph Editor")
+        .size([1000.0, 700.0], Condition::FirstUseEver)
+        .build(|| {
+            // --- Editor frame ---
+            let (new_link, destroyed_link) = {
+                let editor = ui.imnodes_editor(
+                    &amp;app.nodes_context,
+                    Some(&amp;app.editor_context),
+                );
+                editor.enable_link_detach_with_ctrl();
+                editor.enable_multiple_select_with_ctrl();
+
+                if !app.positions_initialized {
+                    for (i, node) in app.graph.nodes.iter().enumerate() {
+                        let x = 100.0 + (i as f32) * 250.0;
+                        editor.set_node_pos_grid(to_im_id(node.id), [x, 100.0]);
+                    }
+                    app.positions_initialized = true;
+                }
+
+                // Render nodes
+                for node in &amp;app.graph.nodes {
+                    let n = editor.node(to_im_id(node.id));
+                    n.title_bar(|| ui.text(&amp;node.title));
+                    for pin in &amp;node.pins {
+                        let im_pin = to_im_pin(pin.id);
+                        match pin.kind {
+                            PinKind::Input => {
+                                let _a = editor.input_attr(im_pin, imnodes::PinShape::CircleFilled);
+                                ui.text(&amp;pin.label);
+                            }
+                            PinKind::Output => {
+                                let _a = editor.output_attr(im_pin, imnodes::PinShape::QuadFilled);
+                                ui.text(&amp;pin.label);
+                            }
+                        }
+                    }
+                    n.end();
+                }
+
+                // Render links
+                for link in &amp;app.graph.links {
+                    editor.link(to_im_link(link.id), to_im_pin(link.from), to_im_pin(link.to));
+                }
+
+                editor.minimap(0.25, MiniMapLocation::BottomRight);
+                let post = editor.end();
+
+                // Collect interaction results
+                let new_link = post.is_link_created()
+                    .map(|lc| (lc.start_attr.raw(), lc.end_attr.raw()));
+                let destroyed = post.is_link_destroyed()
+                    .map(|id| id.raw());
+                (new_link, destroyed)
+            };
+
+            // --- Process mutations ---
+            if let Some((a, b)) = new_link {
+                let (from, to) = classify_pins(a, b, &amp;app.graph);
+                if let (Some(from), Some(to)) = (from, to) {
+                    let link = crate::graph::Link {
+                        id: app.graph.next_link_id(),
+                        from, to,
+                    };
+                    app.graph.add_link(link);
+                }
+            }
+
+            if let Some(raw) = destroyed_link {
+                app.graph.remove_link(LinkId(raw));
+            }
+        });
+}
+
+fn classify_pins(
+    a: i32, b: i32,
+    graph: &amp;crate::graph::GraphState,
+) -> (Option&lt;PinId&gt;, Option&lt;PinId&gt;) {
+    let find = |raw: i32| graph.nodes.iter()
+        .flat_map(|n| &amp;n.pins)
+        .find(|p| p.id.0 == raw);
+    match (find(a), find(b)) {
+        (Some(pa), Some(pb)) if pa.kind == PinKind::Output
+            &amp;&amp; pb.kind == PinKind::Input =&gt;
+            (Some(pa.id), Some(pb.id)),
+        (Some(pa), Some(pb)) if pa.kind == PinKind::Input
+            &amp;&amp; pb.kind == PinKind::Output =&gt;
+            (Some(pb.id), Some(pa.id)),
+        _ =&gt; (None, None),
+    }
+}</code></pre>
+          </div>
+
+          <p>You now have a working node editor! You can drag-connect pins to create links, ctrl+click to detach them, and the graph state stays in sync with the UI.</p>
+
+          <div class="chapter-nav">
+            <a href="#nodes" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Building Nodes &amp; Pins</div>
+            </a>
+            <a href="#styling" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Modern Styling &amp; Theming →</div>
+            </a>
+          </div>
+        </section>
+<!-- ============================================ -->
+        <!-- Chapter 09: Modern Styling & Theming -->
+        <!-- ============================================ -->
+        <section id="chapter-styling" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 09</div>
+            <h1>Modern Styling &amp; Theming</h1>
+            <p class="lead">A node editor should look as good as it functions. Let's build a custom dark theme with styled pins, colored links, and a cohesive color palette.</p>
+          </div>
+
+          <h2>Built-in Themes</h2>
+          <p><code>dear-app</code> provides a <code>Theme</code> enum for quick theming. Set it in your <code>RunnerConfig</code>:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Using built-in themes</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_app::{RunnerConfig, Theme};
+
+let config = RunnerConfig {
+    theme: Some(Theme::Dark),  // or Some(Theme::Light), Some(Theme::Classic)
+    ..Default::default()
+};</code></pre>
+          </div>
+
+          <h2>ImNodes Color Elements</h2>
+          <p>ImNodes exposes a rich set of color elements you can customize per-editor. The <code>ColorElement</code> enum covers every visual part of the node editor:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Setting editor colors</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imnodes::ColorElement;
+
+let editor = ui.imnodes_editor(&amp;ctx, Some(&amp;editor_ctx));
+
+// Set colors for this editor
+editor.set_color(ColorElement::TitleBar,       [0.20, 0.40, 0.70, 1.0]);
+editor.set_color(ColorElement::TitleBarHovered, [0.30, 0.50, 0.80, 1.0]);
+editor.set_color(ColorElement::TitleBarSelected,[0.40, 0.60, 0.90, 1.0]);
+editor.set_color(ColorElement::NodeBackground,  [0.15, 0.15, 0.15, 1.0]);
+editor.set_color(ColorElement::NodeBorder,      [0.35, 0.35, 0.35, 1.0]);
+editor.set_color(ColorElement::Link,            [0.60, 0.80, 1.00, 1.0]);
+editor.set_color(ColorElement::GridBackground,   [0.08, 0.08, 0.08, 1.0]);
+editor.set_color(ColorElement::GridLine,         [0.20, 0.20, 0.20, 1.0]);
+editor.set_color(ColorElement::GridLinePrimary,  [0.30, 0.30, 0.30, 1.0]);</code></pre>
+          </div>
+
+          <div class="callout info">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">RGBA float values</div>
+              <p>ImNodes uses <code>[f32; 4]</code> RGBA arrays with values from <code>0.0</code> to <code>1.0</code>. The alpha channel <code>1.0</code> is fully opaque.</p>
+            </div>
+          </div>
+
+          <h2>Scoped Color Overrides</h2>
+          <p>For temporary style changes — like highlighting a group of nodes — use <code>push_color()</code> which returns a token that pops the color when dropped:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Scoped color overrides</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>let editor = ui.imnodes_editor(&amp;ctx, Some(&amp;editor_ctx));
+
+// Push colors for a group of nodes
+{
+    let _c_title = editor.push_color(
+        ColorElement::TitleBar,
+        [0.90, 0.50, 0.30, 1.0],  // orange title bar
+    );
+    let _c_link = editor.push_color(
+        ColorElement::Link,
+        [0.10, 0.80, 0.40, 1.0],   // green links
+    );
+
+    // Nodes rendered here will use the overridden colors
+    let n = editor.node(some_node_id);
+    n.title_bar(|| ui.text("Highlighted Node"));
+    // ...
+
+    // _c_title and _c_link dropped here → colors restored
+}
+
+// Subsequent nodes use the default colors</code></pre>
+          </div>
+
+          <h2>Style Variables</h2>
+          <p>Beyond colors, ImNodes exposes fine-grained style variables for spacing, sizing, and behavior:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Style variables</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>let editor = ui.imnodes_editor(&amp;ctx, Some(&amp;editor_ctx));
+
+// Grid
+editor.set_grid_spacing(24.0);              // distance between grid lines
+
+// Nodes
+editor.set_node_corner_rounding(4.0);      // corner radius (px)
+editor.set_node_padding([8.0, 8.0]);        // [x, y] inner padding
+editor.set_node_border_thickness(1.0);      // border line width
+
+// Links
+editor.set_link_thickness(3.0);             // link line width
+editor.set_link_hover_distance(10.0);       // max distance for hover detection
+editor.set_link_line_segments_per_length(0.1); // curve smoothness
+
+// Pins
+editor.set_pin_circle_radius(6.0);          // circle pin size
+editor.set_pin_quad_side_length(7.0);       // square pin size
+editor.set_pin_triangle_side_length(8.0);    // triangle pin size
+editor.set_pin_line_thickness(1.0);         // outline thickness
+editor.set_pin_hover_radius(10.0);          // hover hitbox radius
+editor.set_pin_offset(0.0);                 // offset from node edge
+
+// Behavior
+editor.set_auto_panning_speed(200.0);       // auto-pan during box select
+
+// Style flags (booleans)
+editor.set_style_flag(dear_imnodes::StyleFlags::GRID_LINES, true);
+editor.set_style_flag(dear_imnodes::StyleFlags::GRID_LINES_PRIMARY, true);
+editor.set_style_flag(dear_imnodes::StyleFlags::GRID_SNAPPING, false);</code></pre>
+          </div>
+
+          <h2>Creating a Theme Module</h2>
+          <p>Let's encapsulate our styling in a <code>theme.rs</code> module — following the Rust Book's guidance to separate configuration from logic:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/theme.rs — modern dark palette</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imnodes::{self as imnodes, ColorElement, ImNodesExt};
+use dear_imgui_rs::Ui;
+
+/// A cohesive dark theme for our node editor.
+pub struct EditorTheme {
+    pub title_bar:       [f32; 4],
+    pub title_hovered:  [f32; 4],
+    pub title_selected: [f32; 4],
+    pub node_bg:         [f32; 4],
+    pub node_border:    [f32; 4],
+    pub link:            [f32; 4],
+    pub link_hovered:   [f32; 4],
+    pub link_selected:  [f32; 4],
+    pub grid_bg:         [f32; 4],
+    pub grid_line:       [f32; 4],
+    pub grid_line_pri:  [f32; 4],
+    pub grid_spacing:   f32,
+    pub node_rounding:  f32,
+    pub node_padding:   [f32; 2],
+    pub link_thickness: f32,
+    pub pin_radius:     f32,
+}
+
+impl EditorTheme {
+    /// A modern dark theme inspired by Blender's node editor.
+    pub fn dark() -> Self {
+        Self {
+            title_bar:       [0.15, 0.29, 0.52, 1.0],
+            title_hovered:   [0.20, 0.36, 0.60, 1.0],
+            title_selected:  [0.25, 0.44, 0.72, 1.0],
+            node_bg:         [0.12, 0.13, 0.16, 1.0],
+            node_border:     [0.25, 0.26, 0.30, 1.0],
+            link:            [0.55, 0.75, 0.95, 1.0],
+            link_hovered:    [0.75, 0.90, 1.00, 1.0],
+            link_selected:   [0.95, 0.80, 0.40, 1.0],
+            grid_bg:          [0.06, 0.07, 0.08, 1.0],
+            grid_line:        [0.15, 0.16, 0.18, 1.0],
+            grid_line_pri:   [0.22, 0.23, 0.26, 1.0],
+            grid_spacing:    24.0,
+            node_rounding:   4.0,
+            node_padding:    [8.0, 8.0],
+            link_thickness:  3.0,
+            pin_radius:      6.0,
+        }
+    }
+
+    /// Apply all colors and style variables to an editor frame.
+    pub fn apply(&amp;self, editor: &amp;imnodes::NodeEditor&lt;'_&gt;) {
+        editor.set_color(ColorElement::TitleBar,        self.title_bar);
+        editor.set_color(ColorElement::TitleBarHovered, self.title_hovered);
+        editor.set_color(ColorElement::TitleBarSelected,self.title_selected);
+        editor.set_color(ColorElement::NodeBackground, self.node_bg);
+        editor.set_color(ColorElement::NodeBorder,     self.node_border);
+        editor.set_color(ColorElement::Link,            self.link);
+        editor.set_color(ColorElement::LinkHovered,    self.link_hovered);
+        editor.set_color(ColorElement::LinkSelected,    self.link_selected);
+        editor.set_color(ColorElement::GridBackground,  self.grid_bg);
+        editor.set_color(ColorElement::GridLine,         self.grid_line);
+        editor.set_color(ColorElement::GridLinePrimary, self.grid_line_pri);
+
+        editor.set_grid_spacing(self.grid_spacing);
+        editor.set_node_corner_rounding(self.node_rounding);
+        editor.set_node_padding(self.node_padding);
+        editor.set_link_thickness(self.link_thickness);
+        editor.set_pin_circle_radius(self.pin_radius);
+    }
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Methods (Ch. 5.3) &amp; Associated Functions</div>
+              <p>Our <code>EditorTheme::dark()</code> is an associated function (like <code>String::new()</code>), while <code>apply()</code> is a method that borrows <code>self</code>. This distinction is covered in <a href="https://doc.rust-lang.org/stable/book/ch05-03-method-syntax.html" target="_blank">Chapter 5.3</a>.</p>
+            </div>
+          </div>
+
+          <h2>Using the Theme</h2>
+          <p>Store the theme in <code>App</code> and apply it once during setup (e.g. in <code>AppBuilder::on_setup</code>), not every frame. ImNodes style setters (<code>set_color</code>, <code>set_grid_spacing</code>, etc.) modify the editor context's <strong>persistent</strong> style state — calling them every frame is wasteful and redundant:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Applying the theme</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// In app.rs
+pub struct App {
+    pub graph: GraphState,
+    pub nodes_context: imnodes::Context,
+    pub editor_context: imnodes::EditorContext,
+    pub theme: crate::theme::EditorTheme,
+    // ...
+}
+
+// Apply the theme ONCE — in on_setup, after creating the editor context:
+impl App {
+    pub fn new(imgui_context: &amp;mut dear_imgui_rs::Context) -> Self {
+        let nodes_context = imnodes::Context::create(imgui_context);
+        let editor_context = nodes_context.create_editor_context();
+        let theme = crate::theme::EditorTheme::dark();
+
+        // Style setters are persistent — apply once, not per frame.
+        let editor = imnodes::editor(&amp;nodes_context, Some(&amp;editor_context));
+        theme.apply(&amp;editor);
+        editor.end();
+
+        // ... rest of App::new ...
+    }
+}
+
+// In editor.rs — render_editor no longer calls theme.apply()
+pub fn render_editor(ui: &amp;Ui, app: &amp;mut App) {
+    ui.window("Node Graph Editor")
+        .build(|| {
+            let editor = ui.imnodes_editor(
+                &amp;app.nodes_context,
+                Some(&amp;app.editor_context),
+            );
+            // Theme was already applied in App::new() — no need to repeat.
+            // ... render nodes and links ...
+        });
+}</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Persistent vs per-frame style</div>
+              <p>ImNodes style setters write to the <code>EditorContext</code>'s persistent state. They are idempotent — calling them every frame produces the same result — but it's wasted work. Apply your theme once during initialization (e.g. <code>App::new()</code> or <code>on_setup</code>) and leave it alone. If you ever need to change themes at runtime, apply the new theme in response to a user action, not on every frame.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#links" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Links &amp; Connections</div>
+            </a>
+            <a href="#interactions" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Interactions &amp; UX →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 10: Interactions & UX -->
+        <!-- ============================================ -->
+        <section id="chapter-interactions" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 10</div>
+            <h1>Interactions &amp; UX</h1>
+            <p class="lead">A node editor is only as good as its interactions. Let's add context menus, node creation on right-click, selection management, and hover detection.</p>
+          </div>
+
+          <h2>Selection</h2>
+          <p>ImNodes handles multi-selection automatically when you enable it. The <code>PostEditor</code> gives you the selected nodes and links after each frame:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Selection queries</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>let post = editor.end();
+
+let sel_nodes = post.selected_nodes();
+let sel_links = post.selected_links();
+
+ui.text(format!(
+    "Selected: {} nodes, {} links",
+    sel_nodes.len(),
+    sel_links.len()
+));
+
+// Clear all selection
+if ui.button("Clear Selection") {
+    post.clear_selection();
+}</code></pre>
+          </div>
+
+          <h2>Right-Click Context Menu</h2>
+          <p>The most important UX feature: right-click on the canvas to add a node, or right-click on a node/link to delete it. This uses ImGui's popup system combined with ImNodes hover queries:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Context menu pattern</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Imports needed for the context menu:
+use dear_imgui_rs::{MouseButton, Ui};
+use crate::graph::{GraphState, Node, NodeId, LinkId, Pin, PinKind};
+
+// In the App struct, add context menu state:
+pub struct App {
+    // ...
+    pub ctx_open_pos: Option&lt;[f32; 2]&gt;,
+    pub ctx_hovered_node: Option&lt;NodeId&gt;,
+    pub ctx_hovered_link: Option&lt;LinkId&gt;,
+}
+
+// After editor.end(), but still inside the window:
+let post = editor.end();
+
+// Capture canvas origin for node placement
+let canvas_origin = ui.cursor_screen_pos();
+
+// Right-click on canvas opens context menu
+if post.is_editor_hovered()
+    &amp;&amp; ui.io().mouse_clicked[MouseButton::Right as usize]
+{
+    app.ctx_open_pos = Some(ui.io().mouse_pos);
+    app.ctx_hovered_link = post.hovered_link()
+        .map(|id| LinkId(id.raw()));
+    app.ctx_hovered_node = post.hovered_node()
+        .map(|id| NodeId(id.raw()));
+    ui.open_popup("editor_ctx");
+}
+
+// Render the popup
+ui.popup("editor_ctx", || {
+    if let Some(link_id) = app.ctx_hovered_link {
+        if ui.selectable_config("Delete Link").build() {
+            app.graph.remove_link(link_id);
+            ui.close_current_popup();
+        }
+    } else if let Some(node_id) = app.ctx_hovered_node {
+        if ui.selectable_config("Delete Node").build() {
+            app.graph.remove_node(node_id);
+            ui.close_current_popup();
+        }
+    } else {
+        // Empty canvas — offer to add a node
+        if ui.selectable_config("Add Node").build() {
+            let pos = app.ctx_open_pos.unwrap_or([0.0, 0.0]);
+            // Create a new node and position it
+            let id = app.graph.next_node_id();
+            let pin_in = app.graph.next_pin_id();
+            let pin_out = app.graph.next_pin_id();
+            app.graph.add_node(Node {
+                id,
+                title: format!("Node {}", id.0),
+                pins: vec![
+                    Pin { id: pin_in, kind: PinKind::Input, label: "In".into() },
+                    Pin { id: pin_out, kind: PinKind::Output, label: "Out".into() },
+                ],
+            });
+            // Position it at the click location
+            // (requires panning offset — see note below)
+            ui.close_current_popup();
+        }
+    }
+});</code></pre>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Avoid calling ImNodes hover queries inside popups</div>
+              <p>ImNodes' hover state is associated with the editor canvas, but during popup rendering the "current window" is the popup window. Capture all hover results <strong>before</strong> opening the popup, store them in <code>App</code>, and reference them inside the popup. This is exactly what the example above does.</p>
+            </div>
+          </div>
+
+          <h2>Minimap with Callback</h2>
+          <p>The minimap can report which node the user is hovering. This is useful for showing tooltips or details:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Minimap with hover callback</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>let mut editor = ui.imnodes_editor(
+    &amp;app.nodes_context,
+    Some(&amp;app.editor_context),
+);
+
+// Collect the hovered node into a local — the editor holds an
+// immutable borrow of app.nodes_context / app.editor_context,
+// so we cannot mutably borrow `app` inside the callback.
+let mut hovered: Option&lt;NodeId&gt; = None;
+
+editor.minimap_with_callback(
+    0.25,                                    // size (25% of editor)
+    imnodes::MiniMapLocation::BottomRight,   // corner position
+    |node_id| {
+        hovered = Some(NodeId(node_id.raw()));
+    },
+);
+
+// ... render nodes and links ...
+
+editor.end();
+
+// Now the editor's borrow has ended — safe to write to `app`.
+app.minimap_hovered = hovered;</code></pre>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Why collect into a local?</div>
+              <p>The <code>editor</code> token holds an immutable borrow of <code>app.nodes_context</code> and <code>app.editor_context</code>. If the callback tried to write <code>app.minimap_hovered</code> directly, you'd have a simultaneous mutable and immutable borrow of <code>app</code> — the borrow checker rejects this. By collecting into a local <code>Option&lt;NodeId&gt;</code> and writing to <code>app</code> only after <code>editor.end()</code> releases the borrow, we satisfy the borrow checker. This collect-then-mutate pattern is essential whenever a callback or iterator borrows part of <code>app</code> while you need to mutate another part.</p>
+            </div>
+          </div>
+
+          <h2>Keyboard Shortcuts</h2>
+          <p>For a polished editor, add keyboard shortcuts. ImGui exposes key state through the <code>Ui</code>:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Keyboard shortcuts</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Delete selected nodes with Delete key
+if ui.is_key_pressed(dear_imgui_rs::Key::Delete) {
+    let selected: Vec&lt;NodeId&gt; = post.selected_nodes()
+        .iter()
+        .map(|id| NodeId(id.raw()))
+        .collect();
+    for id in selected {
+        app.graph.remove_node(id);
+    }
+    post.clear_selection();
+}
+
+// Select all with Ctrl+A
+if ui.is_key_pressed(dear_imgui_rs::Key::A)
+    &amp;&amp; ui.io().key_ctrl
+{
+    // ImNodes doesn't have a "select all" API directly,
+    // but you can iterate your node list and select each
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: String Slices (Ch. 8.3)</div>
+              <p>When rendering node titles and pin labels, we pass <code>&amp;str</code> references from our <code>String</code> fields. The Rust Book's <a href="https://doc.rust-lang.org/stable/book/ch08-02-strings.html" target="_blank">Chapter 8.2</a> explains the difference between <code>String</code> (owned, growable) and <code>&amp;str</code> (borrowed slice). Our model owns <code>String</code>s; the UI borrows them as <code>&amp;str</code> for rendering.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#styling" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Modern Styling &amp; Theming</div>
+            </a>
+            <a href="#persistence" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">State Persistence →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 11: State Persistence -->
+        <!-- ============================================ -->
+        <section id="chapter-persistence" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 11</div>
+            <h1>State Persistence</h1>
+            <p class="lead">A production editor must save and restore the user's work. We need two layers of persistence: ImNodes layout (node positions) and our graph structure (nodes, links, metadata).</p>
+          </div>
+
+          <h2>Two Layers of State</h2>
+          <div class="diagram">
+            <pre style="text-align:left; display:inline-block; font-family:var(--font-mono); font-size:13px; line-height:1.8; color:var(--text-secondary);">
+┌────────────────────────────────────────────┐
+│         Complete Editor State               │
+├────────────────────┬───────────────────────┤
+│  ImNodes INI       │  Serde JSON            │
+│  (layout + prefs)  │  (graph structure)     │
+│                    │                        │
+│  • Node positions  │  • Node definitions    │
+│  • Zoom level      │  • Pin definitions     │
+│  • Panning offset  │  • Link connections    │
+│  • Selection       │  • Custom metadata     │
+│  • Editor settings │  • Application flags   │
+├────────────────────┼───────────────────────┤
+│  save_state_to_    │  serde_json::          │
+│    ini_string()    │    to_string()         │
+│  load_state_from_  │  serde_json::          │
+│    ini_string()   │    from_str()          │
+└────────────────────┴───────────────────────┘
+            </pre>
+            <div class="diagram-label">Two layers of persistence — layout and structure</div>
+          </div>
+
+          <h2>ImNodes Built-in Serialization</h2>
+          <p>ImNodes automatically serializes node positions, zoom, and panning to an INI format. The <code>PostEditor</code> provides string and file APIs:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>ImNodes INI serialization</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Save to a string
+let editor = ui.imnodes_editor(&amp;ctx, Some(&amp;editor_ctx));
+let post = editor.end();
+let ini_string: String = post.save_state_to_ini_string();
+
+// Load from a string
+let editor = ui.imnodes_editor(&amp;ctx, Some(&amp;editor_ctx));
+let post = editor.end();
+post.load_state_from_ini_string(&amp;saved_ini);
+
+// Save to a file
+post.save_state_to_ini_file("layout.ini");
+
+// Load from a file
+post.load_state_from_ini_file("layout.ini");</code></pre>
+          </div>
+
+          <div class="callout warn">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">INI save/load must happen during a frame</div>
+              <p><code>save_state_to_ini_string()</code> and <code>load_state_from_ini_string()</code> must be called on a <code>PostEditor</code> — meaning the editor frame must have been started and ended. You can't call these outside the ImGui frame. A common pattern is to check a "pending save" flag and execute the save inside the frame callback.</p>
+            </div>
+          </div>
+
+          <h2>Serializing GraphState with Serde</h2>
+          <p>Our graph model already derives <code>Serialize</code> and <code>Deserialize</code>. Use <code>serde_json</code> to serialize the graph structure:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/app.rs — save/load functions</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use std::path::Path;
+use serde_json;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ProjectFile {
+    graph: crate::graph::GraphState,
+    version: String,
+}
+
+impl App {
+    /// Save the graph structure to a JSON file.
+    pub fn save_graph(&amp;self, path: &amp;str) -> Result&lt;(), String&gt; {
+        let project = ProjectFile {
+            graph: self.graph.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+        let json = serde_json::to_string_pretty(&amp;project)
+            .map_err(|e| format!("Serialization error: {e}"))?;
+        std::fs::write(path, json)
+            .map_err(|e| format!("File write error: {e}"))?;
+        Ok(())
+    }
+
+    /// Load the graph structure from a JSON file.
+    pub fn load_graph(&amp;mut self, path: &amp;str) -> Result&lt;(), String&gt; {
+        let json = std::fs::read_to_string(path)
+            .map_err(|e| format!("File read error: {e}"))?;
+        let project: ProjectFile = serde_json::from_str(&amp;json)
+            .map_err(|e| format!("Deserialization error: {e}"))?;
+        self.graph = project.graph;
+        self.positions_initialized = false; // re-init positions
+        Ok(())
+    }
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Error Handling &amp; ? Operator (Ch. 9)</div>
+              <p>We use <code>Result&lt;(), String&gt;</code> for human-readable errors and <code>map_err</code> to convert <code>io::Error</code> and <code>serde_json::Error</code> into our string error type. See <a href="https://doc.rust-lang.org/stable/book/ch09-02-recoverable-errors-with-result.html" target="_blank">Chapter 9.2</a> for <code>Result</code> and the <code>?</code> operator.</p>
+            </div>
+          </div>
+
+          <h2>Save/Load Menu Items</h2>
+          <p>Wire the save/load functions into the menu bar. Because ImNodes' INI save must happen during a frame, we use a "pending action" flag:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/ui/toolbar.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use dear_imgui_rs::Ui;
+use crate::app::App;
+
+pub enum PendingAction {
+    SaveGraph(String),
+    LoadGraph(String),
+    SaveIni(String),
+    LoadIni(String),
+    NewGraph,
+}
+
+pub fn render_menu_bar(ui: &amp;Ui, app: &amp;mut App) {
+    if let Some(_mb) = ui.begin_main_menu_bar() {
+        if let Some(_m) = ui.begin_menu("File") {
+            if ui.menu_item("New") {
+                app.pending = Some(PendingAction::NewGraph);
+            }
+            if ui.menu_item("Save Graph...") {
+                app.pending = Some(PendingAction::SaveGraph("graph.json".into()));
+            }
+            if ui.menu_item("Load Graph...") {
+                app.pending = Some(PendingAction::LoadGraph("graph.json".into()));
+            }
+            ui.separator();
+            if ui.menu_item("Save Layout") {
+                app.pending = Some(PendingAction::SaveIni("layout.ini".into()));
+            }
+            if ui.menu_item("Load Layout") {
+                app.pending = Some(PendingAction::LoadIni("layout.ini".into()));
+            }
+        }
+    }
+}</code></pre>
+          </div>
+
+          <p>Then process the pending action inside the editor frame (where <code>PostEditor</code> is available):</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Processing pending actions</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// After editor.end(), inside the window build closure:
+let post = editor.end();
+
+// Process pending save/load actions
+match app.pending.take() {
+    Some(PendingAction::SaveGraph(path)) =&gt; {
+        if let Err(e) = app.save_graph(&amp;path) {
+            eprintln!("Save error: {e}");
+        }
+    }
+    Some(PendingAction::LoadGraph(path)) =&gt; {
+        if let Err(e) = app.load_graph(&amp;path) {
+            eprintln!("Load error: {e}");
+        }
+    }
+    Some(PendingAction::SaveIni(path)) =&gt; {
+        post.save_state_to_ini_file(&amp;path);
+    }
+    Some(PendingAction::LoadIni(path)) =&gt; {
+        post.load_state_from_ini_file(&amp;path);
+    }
+    Some(PendingAction::NewGraph) =&gt; {
+        app.graph = crate::graph::GraphState::new();
+        app.positions_initialized = false;
+    }
+    None =&gt; {}
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Trait Objects (Ch. 17.2 &amp; Ch. 19)</div>
+              <p>Serialization is an example of treating types through a common interface. Serde's <code>Serialize</code> and <code>Deserialize</code> traits are like the trait objects discussed in <a href="https://doc.rust-lang.org/stable/book/ch17-02-trait-objects.html" target="_blank">Chapter 17.2</a>, though serde uses derive macros instead of dynamic dispatch.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#interactions" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Interactions &amp; UX</div>
+            </a>
+            <a href="#production" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Production Architecture →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 12: Production Architecture -->
+        <!-- ============================================ -->
+        <section id="chapter-production" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 12</div>
+            <h1>Production Architecture</h1>
+            <p class="lead">Let's elevate our project from a tutorial to a production-ready application with proper error types, testing, feature flags, and logging.</p>
+          </div>
+
+          <h2>Custom Error Types</h2>
+          <p>The Rust Book <a href="https://doc.rust-lang.org/stable/book/ch09-00-error-handling.html" target="_blank">Chapter 9</a> teaches us to define custom error types for our domain. Let's create a proper error enum:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/error.rs</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use std::fmt;
+use std::io;
+
+/// Application-wide error type.
+#[derive(Debug)]
+pub enum AppError {
+    /// File I/O error
+    Io(io::Error),
+    /// Serialization/deserialization error
+    Serde(serde_json::Error),
+    /// ImGui/Dear ImGui runtime error
+    ImGui(String),
+    /// Graph validation error
+    Graph(String),
+    /// Window/GPU initialization error
+    Init(String),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter&lt;'_&gt;) -> fmt::Result {
+        match self {
+            AppError::Io(e) =&gt; write!(f, "I/O error: {e}"),
+            AppError::Serde(e) =&gt; write!(f, "Serialization error: {e}"),
+            AppError::ImGui(msg) =&gt; write!(f, "ImGui error: {msg}"),
+            AppError::Graph(msg) =&gt; write!(f, "Graph error: {msg}"),
+            AppError::Init(msg) =&gt; write!(f, "Initialization error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for AppError {
+    fn source(&amp;self) -&gt; Option&lt;&amp;(dyn std::error::Error + 'static)&gt; {
+        match self {
+            AppError::Io(e) =&gt; Some(e),
+            AppError::Serde(e) =&gt; Some(e),
+            _ =&gt; None,
+        }
+    }
+}
+
+// From impls for ergonomic ? operator usage
+impl From&lt;io::Error&gt; for AppError {
+    fn from(e: io::Error) -&gt; Self { AppError::Io(e) }
+}
+
+impl From&lt;serde_json::Error&gt; for AppError {
+    fn from(e: serde_json::Error) -&gt; Self { AppError::Serde(e) }
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Error Handling (Ch. 9)</div>
+              <p>This follows <a href="https://doc.rust-lang.org/stable/book/ch09-02-recoverable-errors-with-result.html" target="_blank">Chapter 9.2</a> exactly: define a domain error enum, implement <code>Display</code> and <code>Error</code>, and add <code>From</code> impls so the <code>?</code> operator converts automatically. The <code>source()</code> method enables error chaining for debugging.</p>
+            </div>
+          </div>
+
+          <h2>Testing the Graph Model</h2>
+          <p>Because we separated the data model from ImGui, we can test <code>GraphState</code> thoroughly without a GPU:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/graph/state.rs — unit tests</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::model::*;
+
+    fn make_test_graph() -> GraphState {
+        let mut g = GraphState::new();
+        let n1 = g.next_node_id();
+        let p1_out = g.next_pin_id();
+        let p1_in = g.next_pin_id();
+        g.add_node(Node {
+            id: n1, title: "A".into(),
+            pins: vec![
+                Pin { id: p1_out, kind: PinKind::Output, label: "Out".into() },
+                Pin { id: p1_in, kind: PinKind::Input, label: "In".into() },
+            ],
+        });
+
+        let n2 = g.next_node_id();
+        let p2_in = g.next_pin_id();
+        g.add_node(Node {
+            id: n2, title: "B".into(),
+            pins: vec![
+                Pin { id: p2_in, kind: PinKind::Input, label: "In".into() },
+            ],
+        });
+
+        // Link A.Out -&gt; B.In
+        g.add_link(Link { id: g.next_link_id(), from: p1_out, to: p2_in });
+        g
+    }
+
+    #[test]
+    fn test_add_link_prevents_duplicates() {
+        let mut g = make_test_graph();
+        let dup = Link { id: g.next_link_id(), from: PinId(1), to: PinId(3) };
+        assert!(!g.add_link(dup), "Duplicate link should be rejected");
+    }
+
+    #[test]
+    fn test_add_link_rejects_wrong_direction() {
+        let mut g = make_test_graph();
+        // Input -> Input (both are input pins) — should be rejected
+        let bad = Link { id: g.next_link_id(), from: PinId(0), to: PinId(2) };
+        assert!(!g.add_link(bad), "Input→Input link should be rejected");
+        // Output -> Output — also rejected
+        let bad2 = Link { id: g.next_link_id(), from: PinId(1), to: PinId(1) };
+        assert!(!g.add_link(bad2), "Output→Output link should be rejected");
+    }
+
+    #[test]
+    fn test_remove_node_removes_links() {
+        let mut g = make_test_graph();
+        assert_eq!(g.links.len(), 1);
+        g.remove_node(NodeId(0));
+        assert_eq!(g.links.len(), 0, "Links to removed node should be deleted");
+        assert_eq!(g.nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_id_allocation_is_monotonic() {
+        let mut g = GraphState::new();
+        assert_eq!(g.next_node_id(), NodeId(0));
+        assert_eq!(g.next_node_id(), NodeId(1));
+        assert_eq!(g.next_pin_id(), PinId(0));
+        assert_eq!(g.next_pin_id(), PinId(1));
+    }
+
+    #[test]
+    fn test_serialize_deserialize_roundtrip() {
+        let g = make_test_graph();
+        let json = serde_json::to_string(&amp;g).unwrap();
+        let g2: GraphState = serde_json::from_str(&amp;json).unwrap();
+        assert_eq!(g.nodes.len(), g2.nodes.len());
+        assert_eq!(g.links.len(), g2.links.len());
+    }
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Testing (Ch. 11)</div>
+              <p>Unit tests live in the same file as the code they test, inside a <code>#[cfg(test)] mod tests</code> block. Integration tests live in <code>tests/</code>. See <a href="https://doc.rust-lang.org/stable/book/ch11-01-writing-tests.html" target="_blank">Chapter 11.1</a> and <a href="https://doc.rust-lang.org/stable/book/ch11-03-test-organization.html" target="_blank">Chapter 11.3</a>.</p>
+            </div>
+          </div>
+
+          <h2>Feature Flags</h2>
+          <p>For production, use Cargo feature flags to conditionally compile debugging tools or alternate backends:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Cargo.toml — with features</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>[features]
+default = ["imnodes"]
+imnodes = ["dep:dear-imnodes"]
+debug-tools = []     # Enables ImGui demo window and metrics
+serde-support = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+dear-app = "0.15"
+dear-imgui-rs = "0.15"
+dear-imnodes = { version = "0.15", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+tracing = "0.1"
+tracing-subscriber = "0.3"</code></pre>
+          </div>
+
+          <p>Then use <code>#[cfg(feature = "...")]</code> to conditionally compile:</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>Conditional compilation</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>// Only show the ImGui demo window in debug builds
+#[cfg(feature = "debug-tools")]
+{
+    ui.show_demo_window(&amp;mut app.show_demo);
+}</code></pre>
+          </div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Cargo Book: Feature Flags &amp; <code>cfg</code></div>
+              <p>Feature flags are documented in the <a href="https://doc.rust-lang.org/cargo/reference/features.html" target="_blank">Cargo Book — Features</a> (not the Rust Book). Conditional compilation (<code>cfg</code>) attributes are covered in <a href="https://doc.rust-lang.org/reference/conditional-compilation.html" target="_blank">the Rust Reference</a> and the Rust Book's <a href="https://doc.rust-lang.org/stable/book/ch14-01-release-profiles.html" target="_blank">Chapter 14.1</a> touches on release profiles.</p>
+            </div>
+          </div>
+
+          <h2>Logging with Tracing</h2>
+          <p>For production debugging, structured logging is essential. The <code>tracing</code> crate is the modern standard:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs — with tracing</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>use tracing::info;
+use tracing_subscriber;
+use dear_app::{RunnerConfig, AddOnsConfig, AppBuilder};
+use crate::app::App;
+
+fn main() -> Result&lt;(), AppError&gt; {
+    // Initialize logging
+    tracing_subscriber::fmt()
+        .with_env_filter("node_editor=debug,dear_app=info")
+        .init();
+
+    info!("Starting Node Graph Editor v{}", env!("CARGO_PKG_VERSION"));
+
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        ..Default::default()
+    };
+
+    let mut app: Option&lt;App&gt; = None;
+
+    AppBuilder::new()
+        .with_config(config)
+        .with_addons(AddOnsConfig::auto())
+        .on_setup(|ctx| { app = Some(App::new(ctx)); })
+        .on_frame(move |ui| {
+            if let Some(ref mut a) = app {
+                crate::ui::render(ui, a);
+            }
+        })
+        .run()
+        .map_err(|e| AppError::Init(e.to_string()))
+}</code></pre>
+          </div>
+
+          <h2>Separating UI State from App State</h2>
+          <p>As the tutorial progressed, the <code>App</code> struct accumulated fields from every chapter — graph data, ImNodes contexts, theme, <em>and</em> UI interaction state (context menu position, hovered node/link, demo window toggle, pending actions). This is a common "god object" anti-pattern. For a production architecture, split ephemeral UI interaction state into its own struct:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/app.rs — with UiState</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>/// Ephemeral UI interaction state — resets every session.
+/// Separated from App so the data model and contexts stay clean.
+pub struct UiState {
+    pub show_about: bool,
+    pub show_demo: bool,
+    pub positions_initialized: bool,
+    pub ctx_open_pos: Option&lt;[f32; 2]&gt;,
+    pub ctx_hovered_node: Option&lt;NodeId&gt;,
+    pub ctx_hovered_link: Option&lt;LinkId&gt;,
+    pub minimap_hovered: Option&lt;NodeId&gt;,
+    pub pending: Option&lt;PendingAction&gt;,
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self {
+            show_about: false,
+            show_demo: false,
+            positions_initialized: false,
+            ctx_open_pos: None,
+            ctx_hovered_node: None,
+            ctx_hovered_link: None,
+            minimap_hovered: None,
+            pending: None,
+        }
+    }
+}
+
+/// Core application state — graph, contexts, and theme.
+/// This is what you test and persist; UiState is ephemeral.
+pub struct App {
+    pub graph: GraphState,
+    pub nodes_context: imnodes::Context,
+    pub editor_context: imnodes::EditorContext,
+    pub theme: crate::theme::EditorTheme,
+    pub ui: UiState,  // UI interaction state, nested
+}</code></pre>
+          </div>
+
+          <div class="callout tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Why separate <code>UiState</code>?</div>
+              <p>The data model (<code>GraphState</code>) and GPU contexts are long-lived and serializable. UI interaction state (which popup is open, what's hovered, pending menu actions) is ephemeral — it resets every session and should not be serialized. Keeping them in separate structs makes the boundary explicit, simplifies serialization (you only save <code>graph</code>, not <code>ctx_open_pos</code>), and makes the code easier to reason about. Access UI state via <code>app.ui.ctx_hovered_node</code> instead of <code>app.ctx_hovered_node</code>.</p>
+            </div>
+          </div>
+
+          <h2>Workspace Structure</h2>
+          <p>As the project grows, consider splitting into a Cargo workspace — separating the core library, the GUI binary, and any plugins:</p>
+
+          <div class="file-tree">node-editor-workspace/
+<span class="dir">├── Cargo.toml</span>         <span class="comment">// [workspace] root</span>
+<span class="dir">├── crates/</span>
+<span class="indent"><span class="dir">├── graph-core/</span>    <span class="comment">// Pure data model + logic (no ImGui)</span></span>
+<span class="indent"><span class="dir">├── graph-ui/</span>       <span class="comment">// ImGui/dear-imnodes rendering layer</span></span>
+<span class="indent"><span class="dir">├── graph-app/</span>      <span class="comment">// Binary: main.rs + app wiring</span></span>
+<span class="indent"><span class="dir">├── graph-format/</span>   <span class="comment">// Serialization formats (JSON, TOML)</span></span>
+<span class="dir">└── README.md</span></div>
+
+          <div class="callout book">
+            <div class="callout-icon">📚</div>
+            <div class="callout-content">
+              <div class="callout-title">Rust Book: Cargo Workspaces (Ch. 14.3)</div>
+              <p><a href="https://doc.rust-lang.org/stable/book/ch14-03-cargo-workspaces.html" target="_blank">Chapter 14.3</a> covers workspaces. They let multiple crates share a <code>Cargo.lock</code> and target directory, and they enforce clean API boundaries between sub-projects.</p>
+            </div>
+          </div>
+
+          <h2>Final main.rs</h2>
+          <p>Here's how a production <code>main.rs</code> ties everything together:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="filename"><div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>src/main.rs — production</div>
+              <button class="copy-btn">Copy</button>
+            </div>
+            <pre><code>mod app;
+mod error;
+mod graph;
+mod theme;
+mod ui;
+
+use app::App;
+use error::AppError;
+use dear_app::{
+    RunnerConfig, DockingConfig, DearAppError, AddOnsConfig,
+    AppBuilder,
+};
+use dear_imgui_rs::Condition;
+use tracing::info;
+
+fn main() -> Result&lt;(), AppError&gt; {
+    tracing_subscriber::fmt()
+        .with_env_filter("node_editor=debug")
+        .init();
+
+    info!("Node Graph Editor starting...");
+
+    let config = RunnerConfig {
+        window_title: "Node Graph Editor".to_owned(),
+        window_size: (1280.0, 800.0),
+        docking: DockingConfig { enable: true, auto_dockspace: true, ..Default::default() },
+        ..Default::default()
+    };
+
+    // App::new() needs the ImGui Context, so we use AppBuilder::on_setup
+    // (which receives &amp;mut Context) to create it, and on_frame to render.
+    let mut app: Option&lt;App&gt; = None;
+
+    AppBuilder::new()
+        .with_config(config)
+        .with_addons(AddOnsConfig::auto())
+        .on_setup(|ctx| {
+            app = Some(App::new(ctx));
+        })
+        .on_frame(move |ui| {
+            if let Some(ref mut a) = app {
+                crate::ui::render(ui, a);
+            }
+        })
+        .run()
+        .map_err(|e| AppError::Init(e.to_string()))?;
+
+    info!("Shutting down.");
+    Ok(())
+}</code></pre>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#persistence" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← State Persistence</div>
+            </a>
+            <a href="#conclusion" class="nav-card next">
+              <div class="nav-label">Next Chapter</div>
+              <div class="nav-title">Conclusion &amp; Resources →</div>
+            </a>
+          </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- Chapter 13: Conclusion & Resources -->
+        <!-- ============================================ -->
+        <section id="chapter-conclusion" class="chapter-section">
+          <div class="chapter-header">
+            <div class="chapter-number">Chapter 13</div>
+            <h1>Conclusion &amp; Resources</h1>
+            <p class="lead">You've built a complete, modern node graph editor in Rust. Let's review what we accomplished and where to go next.</p>
+          </div>
+
+          <h2>What We Built</h2>
+          <p>Starting from an empty <code>cargo new</code>, we built a production-grade node graph editor with:</p>
+
+          <div class="card-grid">
+            <div class="card">
+              <div class="card-icon">🏗️</div>
+              <h4>Clean Architecture</h4>
+              <p>Separate data model (<code>graph/</code>), UI rendering (<code>ui/</code>), and app wiring (<code>app.rs</code>), following Rust Book Ch. 7 &amp; 17.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">🎨</div>
+              <h4>Custom Dark Theme</h4>
+              <p>A cohesive color palette with configurable style variables, pin shapes, and link colors.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">⚡</div>
+              <h4>Full Interactions</h4>
+              <p>Drag-to-connect links, right-click context menus, node creation, deletion, selection, and minimap.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">💾</div>
+              <h4>Two-Layer Persistence</h4>
+              <p>ImNodes INI for layout positions + serde JSON for graph structure.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">🧪</div>
+              <h4>Testable Core</h4>
+              <p>Unit tests for link validation, ID allocation, and serialization round-trips.</p>
+            </div>
+            <div class="card">
+              <div class="card-icon">📦</div>
+              <h4>Production Ready</h4>
+              <p>Custom error types, feature flags, tracing logs, and workspace structure.</p>
+            </div>
+          </div>
+
+          <h2>Next Steps</h2>
+          <p>Here are directions to take your node editor further:</p>
+          <ul>
+            <li><strong>Shader Graph</strong> — Add node types for texture sampling, math operations, and color constants. Our chapter on shader graphs in the imnodes example shows the pattern.</li>
+            <li><strong>Node Templates</strong> — Define node types in a registry (enum or trait) so users can instantiate them from a palette. Consider the <code>dear-imgui-reflect</code> crate for reflection-based property editors.</li>
+            <li><strong>Graph Evaluation</strong> — Implement topological sort and evaluate the graph to produce output. This is pure Rust logic — no ImGui needed.</li>
+            <li><strong>Custom Node Drawing</strong> — Use ImGui draw lists (<code>ui.get_window_draw_list()</code>) to render custom curves, previews, or thumbnails inside nodes.</li>
+            <li><strong>Multiple Editors</strong> — Create multiple <code>EditorContext</code> objects for tabbed multi-editor interfaces (as shown in the imnodes example).</li>
+            <li><strong>WASM Deployment</strong> — The <code>dear-imgui-rs</code> ecosystem supports WebAssembly. Use <code>dear-imnodes</code> (not <code>dear-node-editor</code>, which is native-only) for the WASM path.</li>
+            <li><strong>imgui-node-editor</strong> — For a richer, more feature-full node editor, try <code>dear-node-editor</code> (bindings for <a href="https://github.com/thedmd/imgui-node-editor" target="_blank">thedmd's imgui-node-editor</a>). It supports blueprint-style stack layouts and more advanced interactions.</li>
+          </ul>
+
+          <h2>Key Crates &amp; Documentation</h2>
+          <div class="card-grid">
+            <div class="card">
+              <div class="card-icon">📦</div>
+              <h4><a href="https://crates.io/crates/dear-app" target="_blank">dear-app</a></h4>
+              <p>Application runner. <a href="https://docs.rs/dear-app" target="_blank">docs.rs</a></p>
+            </div>
+            <div class="card">
+              <div class="card-icon">📦</div>
+              <h4><a href="https://crates.io/crates/dear-imgui-rs" target="_blank">dear-imgui-rs</a></h4>
+              <p>Core ImGui bindings. <a href="https://docs.rs/dear-imgui-rs" target="_blank">docs.rs</a></p>
+            </div>
+            <div class="card">
+              <div class="card-icon">📦</div>
+              <h4><a href="https://crates.io/crates/dear-imnodes" target="_blank">dear-imnodes</a></h4>
+              <p>Node editor bindings. <a href="https://docs.rs/dear-imnodes" target="_blank">docs.rs</a></p>
+            </div>
+            <div class="card">
+              <div class="card-icon">📦</div>
+              <h4><a href="https://crates.io/crates/dear-node-editor" target="_blank">dear-node-editor</a></h4>
+              <p>Richer node editor. <a href="https://docs.rs/dear-node-editor" target="_blank">docs.rs</a></p>
+            </div>
+          </div>
+
+          <h2>Essential Reading</h2>
+          <ul>
+            <li><a href="https://doc.rust-lang.org/stable/book/" target="_blank">The Rust Programming Language</a> — The canonical Rust book. Every chapter we referenced is here.</li>
+            <li><a href="https://github.com/Latias94/dear-imgui-rs" target="_blank">dear-imgui-rs GitHub</a> — Source code, examples, and issue tracker.</li>
+            <li><a href="https://github.com/ocornut/imgui" target="_blank">Dear ImGui (C++)</a> — The original library. Read the FAQ and demo window code.</li>
+            <li><a href="https://github.com/Nelarius/imnodes" target="_blank">ImNodes (C++)</a> — The original node editor extension.</li>
+            <li><a href="https://github.com/thedmd/imgui-node-editor" target="_blank">imgui-node-editor (C++)</a> — The richer alternative node editor.</li>
+            <li><a href="https://nelari.us/post/imnodes" target="_blank">imnodes blog post</a> — The author's design rationale for ImNodes.</li>
+          </ul>
+
+          <h2>Acknowledgments</h2>
+          <p>This tutorial would not be possible without the work of:</p>
+          <ul>
+            <li><strong><a href="https://github.com/Latias94" target="_blank">Latias94</a></strong> — Creator of the <code>dear-imgui-rs</code> ecosystem, including <code>dear-app</code>, <code>dear-imnodes</code>, and <code>dear-node-editor</code>. Thank you for building a modern, well-structured Rust binding ecosystem with docking, WGPU, and rich extensions.</li>
+            <li><strong><a href="https://github.com/ocornut" target="_blank">Omar Cornut</a></strong> — Creator of Dear ImGui, the foundation of all of this.</li>
+            <li><strong><a href="https://github.com/Nelarius" target="_blank">Nelarius</a></strong> — Creator of ImNodes, whose immediate-mode philosophy inspired the API design.</li>
+            <li><strong><a href="https://github.com/thedmd" target="_blank">thedmd</a></strong> — Creator of imgui-node-editor, the richer alternative.</li>
+            <li>The <strong>Rust</strong> and <strong>Dear ImGui</strong> communities for excellent documentation and support.</li>
+          </ul>
+
+          <div class="callout info">
+            <div class="callout-icon">🦀</div>
+            <div class="callout-content">
+              <div class="callout-title">You did it!</div>
+              <p>You've built a production-grade node graph editor in Rust with a clean architecture, modern styling, full interactions, persistence, and testable core. The patterns you've learned — separation of concerns, RAII, newtype IDs, error handling, and module organization — are the same patterns that make any Rust project maintainable. Go build something amazing.</p>
+            </div>
+          </div>
+
+          <div class="chapter-nav">
+            <a href="#production" class="nav-card prev">
+              <div class="nav-label">Previous</div>
+              <div class="nav-title">← Production Architecture</div>
+            </a>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
