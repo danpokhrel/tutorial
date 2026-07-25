@@ -1,729 +1,309 @@
-# Critique: "Building a Node Graph Editor in Rust with dear-app"
+# CRITIQUE.md — Technical & Pedagogical Review
 
-A thorough technical and pedagogical review of the 13-chapter tutorial hosted at the sandbox server.
+**Subject:** *Building a Node Graph Editor in Rust with dear-app* (the `tutorial/` static site)
+**Reference implementation:** the `gui/` crate (binary `imgui-tutorial`, dear-app/dear-imnodes 0.15.1)
+**Method:** The tutorial was read in full (all 13 chapters, `index.html`, `js/main.js`, `css/style.css`) and cross-checked line-by-line against the reference implementation in `gui/src/`. API claims were verified against `docs.rs/dear-app`, the dear-imgui-rs GitHub README, and the Rust 1.88.0 release notes.
 
----
+> **Status — implemented.** All items in sections A–D and the smaller nits in E have been applied to `tutorial/index.html`, and the stale `NOTE:` comments in `gui/src/` (Appendix A) have been updated so they no longer imply the tutorial still has the bugs it used to. The remaining larger content additions — a single fully-assembled `render_editor` listing, the complete project/properties panel code, and the resizable splitter / draw-list tree styling (section F) — are left as TODOs because they require substantial new listings and would need validation/testing against a built `gui/` crate; pointers to the reference implementation's files are provided in the tutorial callouts instead. See the per-item markers below.
 
-## Overview
-
-This tutorial teaches readers to build a node graph editor in Rust using the `dear-imgui-rs`
-ecosystem (`dear-app`, `dear-imnodes`, and `dear-imgui-rs`). It spans 13 chapters, progressing
-from project setup through core concepts, editor construction, styling, interactions,
-persistence, and production architecture. The tutorial is styled as a polished web page with
-syntax highlighting, sidebar navigation, callouts, and copy buttons.
-
-This critique evaluates the tutorial on five axes: **crate/API accuracy** (does the code compile
-against the real crates?), **version targeting** (does it use a published, stable release?),
-**code quality** (is the Rust idiomatic and correct?), **pedagogical effectiveness** (does it
-teach well?), and **architectural soundness** (are the design decisions good?).
+This is the review the tutorial was improved against. Issues are severity-ranked. Each item names the chapter, quotes the offending code or prose, explains *why* it is wrong, and gives a concrete fix. Each item is marked **[FIXED]**, **[TODO]**, or **[SKIPPED]** to track what was done in this pass. The items in sections A–D and the smaller nits in E were all applied to `tutorial/index.html`; the larger content additions (section F, and option (b) of C1) are **[TODO]** because they require substantial new listings validated against a built crate.
 
 ---
 
-## 1. Crate Research Summary
+## Verdict
 
-The tutorial centers on the `dear-imgui-rs` ecosystem by Latias94 (Mingzhen Zhuang). The
-following crates are used or referenced:
-
-| Crate | Role in Tutorial | Stable Version (0.15.x, as of Jul 2026) | Pre-release (main branch) |
-|-------|-----------------|------------------------------------------|---------------------------|
-| `dear-app` | Application runner (`run_ui`, `AppConfig`, `Application` trait) | 0.15.1 | 0.16.0-alpha.1 |
-| `dear-imgui-rs` | Core Dear ImGui safe Rust bindings | 0.15.1 | 0.16.0-alpha.1 |
-| `dear-imnodes` | Node editor extension bindings (ImNodes) | 0.15.1 | 0.16.0-alpha.1 |
-| `dear-node-editor` | Richer alternative (imgui-node-editor by thedmd) | Mentioned only | — |
-| `serde` / `serde_json` | Graph structure serialization | 1.0 | — |
-| `tracing` / `tracing-subscriber` | Structured logging | 0.1 / 0.3 | — |
-
-> **⚠️ Version targeting error:** The tutorial specifies `version = "0.16"` for `dear-app` and
-> `dear-imnodes` in its `Cargo.toml` examples. However, **0.16 is a pre-release alpha**
-> (`0.16.0-alpha.1`) available only from the `main` branch of the GitHub repository — it has
-> **not been published to crates.io**. The latest stable release train is **0.15.x** (use
-> `version = "0.15"`). Per the project's own COMPATIBILITY.md: *"Release 0.16.0-alpha.1 is not
-> source-compatible with 0.15.x."* A tutorial intended for public consumption should target the
-> stable release. Section 1.1 below catalogs every API in the tutorial that is 0.16-specific and
-> would not compile or exist under 0.15.x.
-
-### Ecosystem Architecture (Verified)
-
-The tutorial's architecture diagram (Chapter 2) accurately describes the layered design:
-
-```
-Your Application → dear-app → dear-imnodes/dear-implot → dear-imgui-rs → dear-imgui-sys → Dear ImGui (C++)
-```
-
-This matches the actual repository structure on GitHub. The choice of `cimgui` as the C ABI
-boundary is correctly explained, and the FFI safety discussion (wrapping `unsafe` behind safe
-abstractions) is accurate per the real `dear-imgui-sys` crate.
-
-### API Verification Methodology
-
-The dear-app 0.16 API was verified against the `main` branch source on GitHub
-(`dear-app/src/lib.rs`, `application.rs`, `config.rs`), since docs.rs had only indexed up to
-0.15.1 at the time of this review. The dear-imnodes API was verified against docs.rs (latest).
-Where the 0.16 source and docs.rs diverge, the 0.16 source (matching the tutorial's stated
-versions) was treated as authoritative.
-
-**However**, the 0.16 API verified above is a **pre-release alpha** (`0.16.0-alpha.1`) that has
-not been published to crates.io. The stable release is 0.15.1 (indexed on docs.rs). The tutorial
-should target 0.15.x, and Section 1.1 below catalogs the APIs that change between the two. The
-0.15.x API was verified against docs.rs (dear-app 0.15.1, dear-imnodes 0.15.1) and the project's
-COMPATIBILITY.md migration table on GitHub.
+The tutorial is well-structured, visually polished, and pedagogically ambitious — the four-part arc (ecosystem → architecture → editor → production) is the right shape, and the data-model/UI separation is taught with genuine conviction. However, as a *copy-the-code-and-it-works* tutorial it currently has **two compile-breaking bugs** that any reader who pastes the snippets verbatim will hit, plus a cluster of internal inconsistencies and several places where the prose promises more than the shown code delivers. None of these are hard to fix; most are one-line edits. The list below is ordered so the cheapest, highest-value fixes come first.
 
 ---
 
-## 1.1. APIs That Are Wrong Under the Stable Release (0.15.x) ★★★★
+## Strengths (worth preserving)
 
-The tutorial targets the pre-release `0.16.0-alpha.1` (main branch) throughout. The following
-table catalogs every API, type, or pattern in the tutorial that **does not exist or is
-fundamentally different** in the stable 0.15.x release. A reader who changes the `Cargo.toml`
-versions to `"0.15"` (as they should, since 0.16 is not on crates.io) will hit every one of these.
-
-The 0.15.x API was verified against docs.rs (dear-app 0.15.1, dear-imnodes 0.15.1) and the
-project's COMPATIBILITY.md `dear-app migration` table. The 0.16 API was verified against the
-`main` branch source.
-
-### 1.1.1. `AppConfig` struct → `RunnerConfig` (Chapters 2, 3, 4, 5, 9, 12)
-
-The tutorial uses `AppConfig` in every `main.rs` snippet:
-
-```rust
-let config = AppConfig {
-    window_title: "Node Graph Editor".to_owned(),
-    window_size: (1280.0, 800.0),
-    docking: DockingConfig::enabled(),
-    ..Default::default()
-};
-```
-
-`AppConfig` is a **0.16 type**. In 0.15.x, the equivalent is `RunnerConfig`, which has similar
-fields but different types in some cases (e.g., `theme: Option<Theme>` rather than `Theme`, and
-`window_size: (f64, f64)`).
-
-### 1.1.2. `run_ui(config, closure)` → `run_simple(closure)` or `run(config, addons, closure)` (Chapters 2, 3, 4, 5, 12)
-
-The tutorial's entry point is:
-
-```rust
-run_ui(config, move |ui| { ... })
-```
-
-`run_ui` is a **0.16 function**. In 0.15.x, the available entry points are:
-
-- `run_simple(gui: F) -> Result<(), DearAppError>` — takes **only** a closure (`|ui|`), no config.
-  To configure the window title/size/docking, you cannot use `run_simple`.
-- `run(runner: RunnerConfig, addons_cfg: AddOnsConfig, gui: F) -> Result<(), DearAppError>` —
-  takes config + add-ons config + a closure that receives `(&Ui, &mut AddOns<'_>)` (note the
-  second `AddOns` parameter, which the tutorial's `run_ui` closures don't have).
-- `AppBuilder` — a builder-pattern API (`AppBuilder::new().with_config(cfg).on_frame(...).run()`).
-
-None of these match `run_ui`'s signature. Every `run_ui` call in the tutorial would fail to
-compile under 0.15.x.
-
-### 1.1.3. `RunError` → `DearAppError` (Chapters 2, 3, 4, 5, 12)
-
-The tutorial's `main` functions return `Result<(), RunError>`:
-
-```rust
-fn main() -> Result<(), RunError> { ... }
-```
-
-`RunError` is a **0.16 type**. In 0.15.x, the error enum is `DearAppError` (a `#[non_exhaustive]`
-enum with 14 variants including `EventLoop`, `WindowCreation`, `RendererInit`, `Generic(String)`,
-etc.). Every `RunError` reference would fail to compile.
-
-### 1.1.4. `dear_app::imgui` re-export does not exist (Chapters 2, 3, 4, 5)
-
-The tutorial imports `Condition` through dear-app:
-
-```rust
-use dear_app::{AppConfig, RunError, imgui::Condition, run_ui};
-```
-
-In 0.15.x, dear-app's only re-export is `pub use wgpu;` — there is **no `imgui` re-export**. The
-`dear_app::imgui` module was added in 0.16. Under 0.15.x, the user must add `dear-imgui-rs = "0.15"`
-as an explicit dependency and write `use dear_imgui_rs::Condition;`. The tutorial's `Cargo.toml`
-(Chapter 3) does not list `dear-imgui-rs` at all, relying entirely on the 0.16 re-export.
-
-### 1.1.5. `DockingConfig` is a struct, not an enum (Chapters 4, 5, 12)
-
-In 0.15.x, `DockingConfig` is a **struct** with public fields:
-
-```rust
-pub struct DockingConfig {
-    pub enable: bool,
-    pub auto_dockspace: bool,
-    pub dockspace_flags: DockFlags,
-    pub host_window_flags: WindowFlags,
-    pub host_window_name: &'static str,
-}
-```
-
-In 0.16, it was redesigned into an **enum** (`Disabled`, `ApplicationManaged`, `FullViewport`)
-with `full_viewport()` / `application_managed()` constructors. The tutorial's `DockingConfig::enabled()`
-doesn't exist in either version (see §2.1). But the critique's suggested fix —
-`DockingConfig::full_viewport()` — is also **0.16-only**. Under 0.15.x, the correct form is:
-
-```rust
-docking: DockingConfig { enable: true, auto_dockspace: true, ..Default::default() }
-```
-
-### 1.1.6. `Application` trait → `RunnerCallbacks` (Chapters 1, 2, 5)
-
-The tutorial describes an `Application` trait with lifecycle hooks:
-
-```text
-configure_imgui — customize ImGui context before first frame
-initialized      — called once after window + GPU are ready
-event            — raw Winit window events
-prepare_frame    — called before each frame
-frame            — the main UI callback
-gpu_lost         — device loss notification
-gpu_recreated    — rebuild GPU resources after recovery
-shutdown         — deterministic cleanup
-```
-
-The `Application` trait is a **0.16 design**. In 0.15.x, the equivalent is the `RunnerCallbacks`
-struct with different hooks: `on_setup`, `on_style`, `on_fonts`, `on_post_init`, `on_gpu_init`,
-`on_event`, `on_exit`. There is no `gpu_lost` / `gpu_recreated` / `prepare_frame` / `shutdown`
-distinction — `on_gpu_init` fires once at startup, and `on_exit` handles cleanup. The tutorial's
-entire description of the advanced lifecycle (Chapter 2) is 0.16-specific.
-
-### 1.1.7. `InitContext` type (Chapter 6)
-
-The tutorial's critique section (§2.3) references "the `Application` trait's `configure_imgui` or
-`initialized` hooks (which receive `InitContext` with `&mut imgui::Context`)." `InitContext` is a
-0.16 concept. In 0.15.x, the `RunnerCallbacks` hooks and `AppBuilder` methods receive
-`&mut Context` directly (e.g., `on_setup: FnMut(&mut Context)`).
-
-### 1.1.8. `FrameContext::addons()` access pattern (Chapter 3)
-
-The tutorial's Chapter 3 info callout states:
-
-> The `imnodes` feature flag on `dear-app` manages the ImNodes context lifecycle for you — it
-> creates the `Context` and `EditorContext` and exposes them through `FrameContext::addons()`.
-
-In 0.15.x, the `AddOns` struct's `imnodes` field is `Option<()>` — a **presence flag**, not the
-actual ImNodes `Context` or `EditorContext`. The `FrameContext` type exists in 0.15.x but has a
-different lifetime signature (`FrameContext<'ui, 'runtime>` vs 0.16's `FrameContext<'frame>`) and
-is not the mechanism for accessing add-ons in the `run`/`run_simple` APIs. In 0.15.x, `run` passes
-`&mut AddOns<'_>` as a second closure parameter. The tutorial's claim that dear-app manages and
-exposes the ImNodes contexts is inaccurate for 0.15.x — it initializes the global ImNodes context
-but does not hand you the `Context` or `EditorContext` objects.
-
-### 1.1.9. `theme` field type: `Option<Theme>` vs `Theme` (Chapter 9)
-
-Chapter 9 shows:
-
-```rust
-let config = AppConfig {
-    theme: Theme::Dark,
-    ..Default::default()
-};
-```
-
-In 0.15.x's `RunnerConfig`, the `theme` field is `Option<Theme>`, so this would need to be
-`theme: Some(Theme::Dark)`. (In 0.16's `AppConfig`, the field type may differ.)
-
-### 1.1.10. Cargo.toml version specs (Chapters 3, 12)
-
-All `Cargo.toml` examples specify:
-
-```toml
-dear-app = { version = "0.16", features = ["imnodes"] }
-dear-imnodes = "0.16"
-```
-
-Since 0.16 has not been published to crates.io, `cargo build` would fail with "no matching package
-version" for any user who copies these. The versions should be `"0.15"`. Additionally, a
-`dear-imgui-rs = "0.15"` dependency must be added explicitly (see §1.1.4).
-
-### 1.1.11. `selectable_config` is 0.15 API, not 0.16 (Chapter 10)
-
-The tutorial uses `ui.selectable_config("...").build()` in Chapter 10's context menu code.
-This is the **0.15.x API** — in 0.16, `Ui::selectable_config` was replaced by `Selectable::new`.
-This is an internal inconsistency: the tutorial uses a 0.15 API here while using 0.16 APIs
-everywhere else. Under 0.15.x, this specific call would actually compile, but it further
-demonstrates that the tutorial's code was not verified against any single consistent version.
-
-### 1.1.12. Chapter 4 docking callout references 0.16 behavior
-
-Chapter 4's warning callout states:
-
-> `dear-app` in 0.16 does **not** support native multi-viewport — use the raw Winit or SDL3
-> owning runtimes if you need that.
-
-This explicitly references "0.16" behavior. Under 0.15.x, multi-viewport support has a different
-status (experimental in some backend combinations), and the guidance would differ.
+- **The chapter arc is correct.** Ecosystem → first window → architecture → ImNodes → nodes → links → style → interactions → persistence → production is a sensible gradient, and the "refactor the closure into a state struct" beat in Ch. 5 lands at exactly the moment a reader would feel the pain.
+- **Data/UI separation is practised, not just preached.** `GraphState` genuinely has no ImGui imports, and the reference impl backs this up with five real unit tests (`gui/src/graph/state.rs`, `test_add_link_prevents_duplicates`, `test_add_link_rejects_wrong_direction`, `test_remove_node_removes_links`, `test_id_allocation_is_monotonic`, `test_serialize_deserialize_roundtrip`). The "this code is 100% testable" callouts are true.
+- **The `Rc<RefCell<Option<App>>>` explanation (Ch. 6) is genuinely good.** It names the exact reason the naive `Option<App>` shared between two `'static` closures does not compile and gives the interior-mutability fix. This is the single best non-obvious insight in the tutorial.
+- **The "collect-then-mutate" borrow pattern (Ch. 7–8) is the right thing to teach**, and it is the pattern the reference impl actually uses (`Interactions` struct in `editor.rs`).
+- **Two-layer persistence (ImNodes INI + serde JSON) is the correct mental model** and the diagram in Ch. 11 communicates it cleanly.
+- **The website itself is high quality** — the hand-rolled Rust syntax highlighter (`js/main.js`), callout taxonomy (book/tip/warn/info), and responsive sidebar are production-grade for a static site.
 
 ---
 
-## 2. Critical API Accuracy Issues
+## A. Compile-breaking bugs (must fix)
 
-These are errors where the tutorial's code **will not compile** against the real crate API.
+### A1. `edition = "2021"` but the code uses let-chains (a 2024-edition feature)
 
-### 2.1 `DockingConfig::enabled()` Does Not Exist ★★★☆
+**Where:** Ch. 3 `Cargo.toml` (`edition = "2021"`); Ch. 8 link-creation handler and "complete editor" code blocks.
 
-The tutorial uses `DockingConfig::enabled()` in Chapters 4, 5, and 12:
-
-```rust
-docking: DockingConfig::enabled(),  // ❌ does not compile
-```
-
-The actual `DockingConfig` enum in dear-app 0.16 has three variants and two constructor methods:
+**The bug:**
 
 ```rust
-pub enum DockingConfig {
-    Disabled,                                              // default
-    ApplicationManaged { dockspace_flags: DockFlags },
-    FullViewport { dockspace_flags: DockFlags, host_window_flags: WindowFlags, host_window_name: String },
-}
+// Cargo.toml (Ch. 3)
+edition = "2021"
 
-impl DockingConfig {
-    pub fn application_managed() -> Self { ... }
-    pub fn full_viewport() -> Self { ... }
+// Ch. 8 — link creation handler
+if let Some((a, b)) = new_link && let Some((from, to)) = classify_pins(a, b, &app.graph) {
+    app.graph.add_link(Link { id: app.graph.next_link_id(), from, to });
 }
 ```
 
-There is **no `enabled()` method**. The tutorial appears to have invented this API. **Note:** the
-critique's suggested replacement of `DockingConfig::full_viewport()` or
-`DockingConfig::application_managed()` is only valid under 0.16 (where `DockingConfig` is an enum).
-Under the stable 0.15.x release (where `DockingConfig` is a struct), the correct form is:
+`if let … && let …` is a **let-chain**. Per the Rust 1.88.0 release notes:
 
-```rust
-docking: DockingConfig { enable: true, auto_dockspace: true, ..Default::default() }
-```
+> "Let chains are only available in the Rust 2024 edition, as this feature depends on the `if let` temporary scope change for more consistent drop order. … please upgrade your crate's edition if you'd like to use this feature!"
 
-This error appears in three separate chapters and every `main.rs` snippet, making it the most pervasive
-compilation error in the tutorial.
+On edition 2021 (even with a 1.88+ toolchain) this is still gated as unstable and the snippet fails to compile with `E0658: let_chains is unstable`. The reference implementation got this right — `gui/Cargo.toml` declares `edition = "2024"` and uses the same let-chain syntax in `editor.rs` and `panels.rs`.
 
-### 2.2 `Theme::ClassicDark` Does Not Exist ★☆☆☆
-
-Chapter 9 mentions `Theme::ClassicDark` as a theme option:
-
-```rust
-theme: Theme::Dark,  // or Theme::Light, Theme::ClassicDark  ← ❌ ClassicDark does not exist
-```
-
-The actual `Theme` enum is:
-
-```rust
-pub enum Theme {
-    Dark,
-    Light,
-    Classic,
-}
-```
-
-There is no `ClassicDark` variant. The correct name is `Theme::Classic`.
-
-### 2.3 `run_ui` Cannot Access ImNodes Add-Ons (Architectural Contradiction) ★★★☆
-
-This is the most subtle and consequential error. **Under 0.15.x, the problem is even more
-fundamental: `run_ui` does not exist at all** (see §1.1.2). The closest equivalent, `run_simple`,
-also provides no access to the ImGui context or add-ons. The `run` function provides `&mut AddOns`,
-but the `imnodes` field is just `Option<()>` — a presence flag, not the actual context.
-
-The tutorial creates a contradiction in its
-own narrative:
-
-**Chapter 3's info callout states:**
-> The `imnodes` feature flag on `dear-app` manages the ImNodes context lifecycle for you — it
-> creates the `Context` and `EditorContext` and exposes them through `FrameContext::addons()`.
-
-**But `run_ui`'s closure signature is:**
-```rust
-pub fn run_ui(config: AppConfig, ui: F) -> Result<(), RunError>
-where F: FnMut(&imgui::Ui) + 'static
-```
-
-The closure receives `&Ui` — **not** `&mut FrameContext`. There is no way to call
-`frame_context.addons().imnodes()` from within a `run_ui` closure. The `FrameContext` (which
-exposes `AddOns`) is only available through the `Application::frame()` method when using `run()`.
-
-**Chapter 6 then pivots to manual context creation:**
-```rust
-impl App {
-    pub fn new(imgui_context: &mut dear_imgui_rs::Context) -> Self {
-        let nodes_context = imnodes::Context::create(imgui_context);
-        let editor_context = nodes_context.create_editor_context();
-        ...
-    }
-}
-```
-
-This requires an `&mut dear_imgui_rs::Context`, but `run_ui` never provides one to the user.
-The `Application` trait's `configure_imgui` or `initialized` hooks (which receive `InitContext`
-with `&mut imgui::Context`) are the only way to get this reference. But the tutorial never
-switches from `run_ui` to the `Application` trait — it continues using `run_ui` throughout.
-
-**The result:** The tutorial's Chapter 6+ code **cannot be assembled into a working program**
-using the `run_ui` API as shown. A reader following along will hit a wall: either they can't
-construct the ImNodes `Context` (no ImGui context available), or they can't use dear-app's
-managed add-ons (no `FrameContext` available). The tutorial needs to either:
-
-1. Switch to the `Application` trait + `run()` at Chapter 6, showing how `configure_imgui`
-   provides the ImGui context, **or**
-2. Show how to obtain the ImGui context from `run_ui` (which may not be possible — this is a
-   real API gap), **or**
-3. Remove the Chapter 3 claim about managed add-ons and acknowledge the manual context
-   creation path is the only option with `run_ui`.
-
-### 2.4 `App::new()` Signature Changes Without Updating `main.rs` ★★☆☆
-
-Chapter 5 shows `App::new()` with no arguments and `main.rs` calling `App::new()`. Chapter 6
-changes `App::new()` to take `imgui_context: &mut dear_imgui_rs::Context`, but **never shows
-an updated `main.rs`** that calls it. The reader is left to figure out how to obtain the
-`&mut Context` and pass it in — which, per issue 2.3 above, is not straightforward with `run_ui`.
-
-### 2.5 `selected_nodes()` / `selected_links()` Return Type Comment ★☆☆☆
-
-The tutorial's code comment in Chapter 8 states:
-```rust
-let sel_nodes = post.selected_nodes();   // &[NodeId]
-```
-
-The actual return type is `Vec<NodeId>`, not `&[NodeId]`. The code would still compile (since
-`.iter()` works on both), but the comment is factually wrong and would mislead a reader
-consulting the docs.
+**Fix:** Change the Ch. 3 `Cargo.toml` to `edition = "2024"` and add a one-line note in the prerequisites that Rust **1.88 or later** is required (the 2024 edition also needs `rust-version = "1.85"` at minimum for the edition itself; let-chains specifically need 1.88). Alternatively, rewrite the two let-chain sites as nested `if let` blocks so the code compiles on edition 2021 — but bumping the edition is simpler and matches the reference impl.
 
 ---
 
-## 3. Code Quality Issues
+### A2. The minimap-callback example calls `.set()` on an `Option`
 
-These are correctness and idiom problems that won't necessarily prevent compilation but
-represent poor Rust practice or subtle bugs.
+**Where:** Ch. 10, "Minimap with Callback".
 
-### 3.1 Minimap Callback Borrows `app` While Editor Holds It ★★☆☆
+**The bug:**
 
-Chapter 10 shows:
 ```rust
-let mut editor = ui.imnodes_editor(&app.nodes_context, Some(&app.editor_context));
+// Comment says: "Cell<Option<NodeId>> lets the callback write via .set()"
+let mut hovered: Option<NodeId> = None;          // ← declared as Option, not Cell
+
+editor.minimap_with_callback(
+    0.25,
+    imnodes::MiniMapLocation::BottomRight,
+    |node_id| {
+        hovered.set(Some(NodeId(node_id.raw()))); // ← Option has no .set() method
+    },
+);
+```
+
+The prose correctly identifies that you need a `Cell<Option<NodeId>>` to write from inside the callback without a conflicting mutable borrow, but the code binds `hovered` as a plain `Option<NodeId>`. `Option` has no `set` method, so this snippet does not compile. The reference implementation does it correctly:
+
+```rust
+// gui/src/ui/editor.rs
+let minimap_hovered: Cell<Option<NodeId>> = Cell::new(None);
 editor.minimap_with_callback(0.25, MiniMapLocation::BottomRight, |node_id| {
-    app.minimap_hovered = Some(NodeId(node_id.raw()));  // ❌ borrow conflict
+    minimap_hovered.set(Some(NodeId(node_id.raw())));
 });
 ```
 
-The `editor` holds an immutable borrow of `app.nodes_context` and `app.editor_context`. The
-callback closure captures `&mut app` (to write `app.minimap_hovered`). This is a simultaneous
-mutable and immutable borrow of `app` — **the borrow checker rejects this**. The tutorial would
-need to collect the hovered node ID from the callback into a local variable first, then write
-to `app` after the editor scope ends.
+**Fix:** Change `let mut hovered: Option<NodeId> = None;` to `let hovered: Cell<Option<NodeId>> = Cell::new(None);`, add `use std::cell::Cell;`, and after `editor.end()` write `app.ui.minimap_hovered = hovered.get();` (the surrounding "Why collect into a local?" callout already describes this — it just needs the code to match).
 
-### 3.2 `classify_link_pins` Return Type is Unidiomatic ★★☆☆
+---
 
-The function returns `(Option<PinId>, Option<PinId>)` — a tuple of two independent Options. But
-the two values are always both `Some` or both `None`; they're never independently absent. The
-idiomatic Rust type would be `Option<(PinId, PinId)>`:
+## B. Prose-vs-code contradictions (fix for credibility)
+
+### B1. Ch. 9 says "apply the theme during `on_setup`" then immediately shows code that applies it on the first frame
+
+**Where:** Ch. 9, "Using the Theme".
+
+The opening paragraph:
+
+> "Store the theme in `App` and apply it once during setup (e.g. in `AppBuilder::on_setup`), not every frame."
+
+The very next code block applies the theme on the **first rendered frame** via a `theme_applied` flag, and the following callout ("Persistent vs per-frame style") explains *why* you cannot apply it in `on_setup` (the style setters need a `NodeEditor` token, which needs a `&Ui`, which isn't available in `on_setup`). The reference impl's `app.rs` carries the same observation as a `NOTE:`.
+
+So the lead sentence asserts the opposite of what the tutorial then teaches. A reader who skims the paragraph and follows "apply it in `on_setup`" will get a borrow/type error and have to re-read to find the correction.
+
+**Fix:** Rewrite the lead to: "Store the theme in `App` and apply it **on the first rendered frame**, not in `on_setup` and not every frame." Then keep the existing callout as the *reason*.
+
+---
+
+### B2. `app.pending` vs `app.ui.pending` are mixed within the same chapter
+
+**Where:** Ch. 11, "Save/Load Menu Items" and "Processing pending actions".
+
+The toolbar snippet uses the post-refactor path:
 
 ```rust
-fn classify_link_pins(a: i32, b: i32, graph: &GraphState) -> Option<(PinId, PinId)> {
-    // ...
+if ui.menu_item("New") { app.ui.pending = Some(PendingAction::NewGraph); }
+```
+
+while the processing snippet a few paragraphs later uses the pre-refactor path:
+
+```rust
+match app.pending.take() {
+    Some(PendingAction::SaveGraph(path)) => { ... }
+    ...
 }
 ```
 
-The tutorial even has to work around this with `.zip()`:
-```rust
-if let Some((from, to)) = from.zip(to) {  // ← unnecessary complexity
-```
+`app.ui.pending` only exists after Ch. 12 introduces the `UiState` struct, and `app.pending` (a field directly on `App`) is never actually declared in any shown code block. So Ch. 11 references a struct layout that is not introduced until Ch. 12, and uses both spellings inconsistently within itself.
 
-This is a missed teaching opportunity: the tutorial could have demonstrated that `Option<(A, B)>`
-is the correct pattern for "both or neither" semantics, which is exactly what the Rust Book's
-Chapter 6 (`match`) and Chapter 13 (closures) would suggest.
-
-### 3.3 `remove_node` is O(n × m) ★☆☆☆
-
-`GraphState::remove_node` calls `remove_links_for_pin` for each pin on the node, and each call
-scans all links with `retain`. For a node with *k* pins and *m* total links, this is O(k × m).
-Additionally, `remove_links_for_pin` is called separately for each pin, meaning the links vector
-is scanned *k* times. A more efficient approach would collect all pins to remove first, then
-filter the links vector in a single pass. For a "production-grade" tutorial (Chapter 12's stated
-goal), this inefficiency should at least be acknowledged.
-
-### 3.4 ID Allocation Never Recycles ★☆☆☆
-
-The `next_node_id`, `next_pin_id`, and `next_link_id` counters monotonically increment and never
-decrement or recycle when entities are deleted. The tutorial doesn't mention this. While i32
-overflow is practically unlikely, the design has a subtle implication: if you save and reload a
-graph, the `next_*` counters in `GraphState` are serialized, but ImNodes' internal ID space
-restarts. The tutorial's `load_graph` resets `positions_initialized` but doesn't address
-whether the ImNodes context's ID space needs synchronization.
-
-### 3.5 Model-Level Link Validation is Missing ★★☆☆
-
-`GraphState::add_link` only checks for duplicate `from → to` pairs. It does not validate that
-`from` refers to an output pin and `to` refers to an input pin. The `classify_link_pins`
-function handles direction at the UI layer, but the data model itself allows invalid links
-(e.g., two input pins connected) if any code calls `add_link` directly. For a tutorial that
-emphasizes "the data model is the single source of truth" and "100% testable," this is a gap.
-The model should enforce link direction invariants.
-
-### 3.6 `theme.apply()` Called Every Frame ★☆☆☆
-
-Chapter 9 shows calling `app.theme.apply(&editor)` inside the per-frame `render_editor`
-function. ImNodes style setters (`set_color`, `set_grid_spacing`, etc.) modify the editor
-context's persistent style state — they don't need to be called every frame. While this won't
-cause visible problems (the values are idempotent), it's wasteful. The tutorial even labels
-these as "persistent style setters" in the docs but doesn't connect that to the implication
-that per-frame application is redundant.
-
-### 3.7 Inconsistent RAII Handling of `NodeToken` ★☆☆☆
-
-Chapter 7's "Node anatomy" example relies on Drop:
-```rust
-let n = editor.node(node_id);
-// ...
-// n dropped here → EndNode called
-```
-
-But the full `render_editor` code calls `n.end()` explicitly:
-```rust
-let n = editor.node(to_im_id(node.id));
-// ...
-n.end();  // explicit end
-```
-
-Both are valid (calling `end()` consumes the token so Drop won't double-call `EndNode`), but
-the inconsistency is confusing for a tutorial. The tutorial should pick one approach and
-explain when each is appropriate (explicit `end()` when you need the scope to end at a specific
-point; Drop when the scope is naturally delimited by a block).
+**Fix:** Either (a) introduce the `pending: Option<PendingAction>` field on `App` explicitly in Ch. 11 and use `app.pending` consistently, then have Ch. 12 move it into `UiState` as a deliberate refactor; or (b) move the `UiState` split to *before* the persistence chapter and use `app.ui.pending` everywhere. The reference impl uses `app.ui.pending` throughout, so option (b) is closer to the working code.
 
 ---
 
-## 4. Pedagogical Issues
+### B3. `classify_link_pins` vs `classify_pins` — the callout names a function that doesn't exist
 
-### 4.1 Rust Book References Are Sometimes Imprecise ★★☆☆
+**Where:** Ch. 8, "Link validation is testable" callout.
 
-The tutorial's Rust Book cross-references are a strong pedagogical feature, but several are
-imprecise or misleading:
+The code defines `fn classify_pins(...)`, but the callout says:
 
-- **Chapter 12** cites "Chapter 19.5 — Advanced Functions and Closures" for **feature flags**.
-  Chapter 19.5 covers function pointers and closures — it has nothing to do with Cargo features.
-  Feature flags are documented in the *Cargo Book* and *Rust Reference*, not the Rust Book.
+> "The `classify_link_pins` function is pure Rust — no ImGui dependency."
 
-- **Chapter 2** cites "Chapter 19.1 — Unsafe Rust" for the FFI safety pattern. This is correct,
-  but the Rust Book's FFI section is actually Chapter 19.5 (or 19.1 depending on edition — the
-  numbering has shifted across editions). The tutorial should clarify which edition it references.
+The reference impl also names it `classify_pins`. The callout is a stale rename.
 
-- **Chapter 10** cites "Chapter 8.3" for String slices, but the actual chapter on strings is
-  8.2 ("Storing UTF-8 Encoded Text with Strings"). Chapter 8.3 covers hash maps.
+**Fix:** s/`classify_link_pins`/`classify_pins`/ in the callout.
 
-These errors undermine the tutorial's credibility as a "Rust Book-aligned" resource. A reader who
-follows the links will find unrelated content, which is especially damaging for a beginner.
+---
 
-### 4.2 Chapter 10's Context Menu Code is Fragmented ★★☆☆
+### B4. Ch. 4 lists `.opened(&mut show_hello)` as a pattern the reader should "notice" — but `show_hello` is never declared and `.opened()` never appears in the shown code
 
-The context menu code in Chapter 10 is a partial snippet that:
-- Uses `MouseButton::Right` without importing `MouseButton`
-- Uses `ui.get_mouse_clicked_count()` and `ui.get_mouse_pos()` — methods that may not exist
-  on the `Ui` type in dear-imgui-rs 0.16 (the actual API might use different method names)
-- References `NodeId` and `LinkId` without showing imports
-- Shows `ui.selectable_config("...").build()` — the actual API may differ
+**Where:** Ch. 4, the "Notice the patterns" `<ul>` after the counter example.
 
-The code reads as plausible but unverified. For a tutorial that claims to produce
-"production-grade" code, untested fragments are a significant weakness.
+```html
+<li><code>.opened(&mut show_hello)</code> — creates a close button on the window.
+    When clicked, ImGui sets <code>show_hello</code> to <code>false</code>.</li>
+```
 
-### 4.3 No Complete Working Codebase ★★★☆
+The counter example above it declares `let mut counter = 0;` and never uses `.opened()` or `show_hello`. A reader scanning the bullet list will hunt the code for a variable that isn't there.
 
-The tutorial never presents a single, complete, compilable codebase. Each chapter shows
-fragments, and the "complete" `render_editor` in Chapter 8 doesn't include the theme (Chapter 9),
-context menu (Chapter 10), or persistence (Chapter 11) features. Chapter 12 shows a "production"
-`main.rs` but it still calls `App::new()` with no arguments (contradicting Chapter 6's signature
-change). A reader who wants the final code must mentally merge 13 chapters of snippets, resolve
-import conflicts, and fix the API errors identified in Section 2. This is a major barrier to
-completion.
+**Fix:** Either add a `let mut show_hello = true;` and `.opened(&mut show_hello)` to the counter window so the bullet is grounded, or drop the bullet.
 
-A good tutorial should either:
-1. Provide a companion Git repository with tagged commits per chapter, **or**
-2. Include a final "Complete Source" appendix with all files in full.
+---
 
-### 4.4 The `App` Struct Becomes a God Object ★★☆☆
+## C. Pedagogical gaps where prose promises code the tutorial never shows
 
-By the end of the tutorial, `App` accumulates fields from every chapter:
+### C1. The "complete" `render_editor` (Ch. 8) is not complete
+
+**Where:** Ch. 8, "Complete Editor with Links".
+
+The block labelled `src/ui/editor.rs — complete` contains:
 
 ```rust
-pub struct App {
-    pub graph: GraphState,
-    pub nodes_context: imnodes::Context,
-    pub editor_context: imnodes::EditorContext,
-    pub theme: EditorTheme,
-    pub show_about: bool,
-    pub positions_initialized: bool,
-    pub ctx_open_pos: Option<[f32; 2]>,
-    pub ctx_hovered_node: Option<NodeId>,
-    pub ctx_hovered_link: Option<LinkId>,
-    pub pending: Option<PendingAction>,
-    pub show_demo: bool,
-    pub minimap_hovered: Option<NodeId>,
+let editor = ui.imnodes_editor(&app.nodes_context, Some(&app.editor_context));
+// ... position init + render nodes (Chapter 7) ...
+for link in &app.graph.links {  // NEW: render links
+```
+
+The "complete" function omits the position-init block, the full node/pin render loop, the theme-application guard, the minimap, the context-menu trigger, the keyboard handler, and the pending-action processing — i.e. everything that makes the editor actually work. The reference impl's `render_editor` is 273 lines and does all of the above. A reader who copies the "complete" block expecting a runnable file gets a stub.
+
+**Fix:** Either (a) rename the block to "render_editor — links section" and make clear it is a *diff* against Ch. 7's function, or (b) show the genuinely complete function once, in Ch. 8 or Ch. 10, as the reference impl does. Option (b) is strongly preferred: a tutorial that never shows a single copy-pasteable `render_editor` is asking the reader to mentally merge ~6 partial snippets.
+
+---
+
+### C2. The project panel and properties panel are described in prose but never implemented
+
+**Where:** Ch. 6, "Side Panels: Project & Properties".
+
+The tutorial introduces the three-panel layout and spends two paragraphs describing behavior:
+
+> "The **project panel** scans the project directory once and caches the tree in `app.ui.file_tree` … The **properties panel** edits the selected node's title and pin labels via `input_text`."
+
+But no code block ever defines `FileEntry`, the directory-scan function, `render_project_panel`, or `render_properties_panel`. The reference impl has a full `ui/file_tree.rs` (82 lines) and `ui/panels.rs` (215 lines, including a Zed-style tree with custom draw-list hover/selection highlights and pin-label editing). The tutorial teaches the reader that these panels exist and how they behave, but not how to build them.
+
+**Fix:** Either add a short "Project panel" subsection with the `FileEntry::scan` + `render_tree_entry` skeleton (the reference impl is a good source), or explicitly say "the panel implementations are omitted for space; see the reference implementation's `ui/panels.rs`" and link to it. Right now the gap reads as an accidental omission rather than a deliberate cut.
+
+---
+
+### C3. Ch. 10's "Add Node" context menu says it creates a node "at `ctx_open_pos`" but never shows the deferred-positioning trick that makes that work
+
+**Where:** Ch. 10, context-menu popup block:
+
+```rust
+} else {
+    // ... "Add Node" creates a new node at ctx_open_pos ...
 }
 ```
 
-The tutorial advocates separation of concerns (data model vs. UI vs. app wiring) but violates
-this at the `App` level. UI interaction state (`ctx_*`, `show_about`, `show_demo`) should be
-in a separate `UiState` struct. The tutorial even shows the workspace structure in Chapter 12
-that would address this, but never refactors `App` itself.
+Creating a node *and* positioning it at a screen coordinate in the same frame is non-trivial: ImNodes needs the node to exist before you can call `set_node_pos_screen` on it, and you can't call the position setter on a `NodeEditor` token that has already been ended. The reference impl solves this with a `pending_node_pos: Option<(NodeId, [f32;2])>` field that is consumed on the *next* frame's editor token:
 
-### 4.5 Borrow Checker Explanation is Technically Wrong ★★☆☆
+```rust
+// gui/src/ui/editor.rs — consumed at the top of the editor frame
+if let Some((node_id, pos)) = app.ui.pending_node_pos.take() {
+    editor.set_node_pos_screen(to_im_id(node_id), pos);
+}
+```
 
-Chapter 7 states:
-> Notice we iterate `&app.graph.nodes` (immutable borrow) while holding `&mut app`. The borrow
-> checker allows this because the immutable borrow of `app.graph.nodes` is a sub-borrow of
-> `&app`.
+This is exactly the kind of "immediate-mode gotcha" the tutorial exists to explain, and it is hand-waved into a comment. A reader who implements the popup naively will find new nodes always spawn at the grid origin.
 
-This is **incorrect**. You cannot hold `&mut app` and `&app.graph.nodes` simultaneously — that
-would be a mutable and immutable borrow of the same value. What actually happens is that the
-code uses `&app.graph.nodes` (reborrowing `app` as shared), and the `&mut app` from the function
-parameter is **not actively borrowed** during the iteration. The function signature
-`fn render_editor(ui: &Ui, app: &mut App)` means `app` is a `&mut` borrow, but within the
-function body, the compiler tracks that only a shared reborrow of `app.graph.nodes` is live
-during the loop. The "sub-borrow" framing is not how Rust's borrow checker works — it tracks
-the full path, not parent-child relationships.
-
-The collect-then-mutate pattern the tutorial teaches is **correct and important**, but the
-explanation of *why* the simple iteration works is wrong and could mislead readers who are
-trying to build a mental model of the borrow checker.
+**Fix:** Expand the `// ... "Add Node" ...` branch into a real code block that (1) allocates the node, (2) stores `app.ui.pending_node_pos = Some((id, ctx_open_pos))`, and (3) add a callout explaining the one-frame deferral and why you can't position the node in the same frame you create it. Then show the `pending_node_pos.take()` line at the top of the next chapter's `render_editor`.
 
 ---
 
-## 5. Strengths
+### C4. Prerequisites understate the Rust Book chapters actually cited
 
-The tutorial has genuine strengths that should be acknowledged:
+**Where:** Ch. 1, "Prerequisites":
 
-### 5.1 Excellent Data/UI Separation
+> "This tutorial assumes you have read through **Chapters 1–9** of The Rust Book."
 
-The `GraphState` / `model.rs` vs `ui/` split is architecturally sound and correctly motivated.
-The claim that the data model is "100% testable" without a GPU is true and valuable. The unit
-tests in Chapter 12 (duplicates, node removal, ID allocation, serde roundtrip) are well-written
-and cover real invariants.
+The body then cites Ch. 10.2 (traits), Ch. 13.1 (closures/`move`), Ch. 15.3 (`Drop`/RAII), Ch. 17.2 (trait objects), Ch. 17.3 (OO-ish separation), Ch. 18.3 (pattern syntax), and Ch. 19.1/19.3 (unsafe, newtypes). A reader who has only read through Ch. 9 will meet `move` closures, `Drop`, extension traits, and newtype-index type safety for the first time *inside* this tutorial, with the callouts assuming familiarity.
 
-### 5.2 Progressive Complexity
-
-The pacing from `cargo new` → first window → architecture → nodes → links → styling →
-interactions → persistence → production is well-judged. Each chapter builds on the previous one
-and introduces one or two new concepts.
-
-### 5.3 RAII and Newtype Explanations
-
-The explanations of RAII tokens (Chapter 2), strongly-typed IDs (Chapter 2), and extension
-traits (Chapter 2) are accurate and well-illustrated. These are the tutorial's strongest
-teaching moments.
-
-### 5.4 Error Handling Chapter
-
-Chapter 12's custom `AppError` enum with `Display`, `Error`, `From` impls, and `source()` is a
-textbook example of idiomatic Rust error handling. It follows the Rust Book Chapter 9 pattern
-exactly.
-
-### 5.5 Callouts and Tips
-
-The callout boxes (📚 Rust Book references, ℹ️ info, 💡 tips, ⚠️ warnings) are genuinely useful
-pedagogical devices. The warnings about drop ordering (Chapter 6) and avoiding ImNodes hover
-queries inside popups (Chapter 10) reflect real gotchas.
-
-### 5.6 Visual Design
-
-The web tutorial itself is well-designed: clean dark theme, syntax-highlighted code blocks with
-copy buttons, sidebar navigation, and responsive mobile menu. The presentation quality exceeds
-most Rust tutorials.
+**Fix:** Either raise the prerequisite to "Chapters 1–10, plus a glance at Ch. 13.1 (closures) and Ch. 15.3 (`Drop`)," or add a short "concepts we'll briefly introduce" note pointing forward to the callouts that cover `move`/`Drop`/newtypes. The current text sets the bar lower than the tutorial clears.
 
 ---
 
-## 6. Summary and Recommendations
+## D. Pedagogical accuracy / misleading explanations
 
-### Severity Matrix
+### D1. The "Borrowing Challenge" explanation (Ch. 7) misuses "two-phase borrow"
 
-| Issue | Severity | Chapters Affected |
-|-------|----------|-------------------|
-| **Tutorial targets pre-release 0.16 instead of stable 0.15.x** | **Critical (won't publish/compile)** | **All** |
-| `AppConfig` / `run_ui` / `RunError` / `dear_app::imgui` are 0.16-only | Critical (won't compile on 0.15.x) | 2, 3, 4, 5, 9, 12 |
-| `Application` trait / `InitContext` / `FrameContext::addons()` are 0.16-only | Critical (API doesn't exist on 0.15.x) | 1, 2, 3, 6 |
-| `DockingConfig::enabled()` doesn't exist | Critical (won't compile) | 4, 5, 12 |
-| `run_ui` can't access add-ons or ImGui Context | Critical (architectural) | 3, 6+ |
-| `App::new()` signature change without `main.rs` update | High (can't assemble) | 6 |
-| `Theme::ClassicDark` doesn't exist | Medium (minor code fix) | 9 |
-| Minimap callback borrow conflict | High (won't compile) | 10 |
-| `classify_link_pins` unidiomatic return type | Medium (code smell) | 8 |
-| Rust Book references point to wrong chapters | Medium (misleading) | 8, 10, 12 |
-| No complete compilable codebase | High (pedagogical) | All |
-| Borrow checker explanation incorrect | Medium (misleading) | 7 |
-| `App` god object | Low (architectural) | 10+ |
-| Model-level link validation missing | Medium (design gap) | 5 |
-| `selected_nodes()` comment wrong type | Low (comment only) | 8 |
-| `theme.apply()` per-frame | Low (performance) | 9 |
-| Inconsistent NodeToken RAII | Low (clarity) | 7 |
-| `selectable_config` is 0.15 API mixed with 0.16 code | Low (version inconsistency) | 10 |
+**Where:** Ch. 7, "Borrowing Challenge: Iterating Nodes":
 
-### Key Recommendations
+> "…the borrow checker tracks that during the loop only a shared reborrow of `app.graph.nodes` is live — the mutable borrow from the function parameter is not actively used at that point. This is not a 'sub-borrow' of `&app`; rather, Rust's two-phase borrow analysis sees that the mutable borrow is dormant while the shared reborrow is active."
 
-1. **Target the stable 0.15.x release, not the pre-release 0.16 alpha.** Change all `Cargo.toml`
-   version specs from `"0.16"` to `"0.15"`. Add `dear-imgui-rs = "0.15"` as an explicit dependency
-   (since 0.15.x does not re-export `imgui` from `dear-app`). Replace every 0.16-only API with its
-   0.15.x equivalent (see §1.1 for the full catalog):
-   - `AppConfig` → `RunnerConfig`
-   - `run_ui(config, closure)` → `run_simple(closure)` or `run(config, addons, closure)` or `AppBuilder`
-   - `RunError` → `DearAppError`
-   - `use dear_app::imgui::Condition` → `use dear_imgui_rs::Condition`
-   - `DockingConfig { enable: true, auto_dockspace: true, ..Default::default() }` (struct, not enum)
-   - `Application` trait → `RunnerCallbacks` / `AppBuilder`
-   - `theme: Some(Theme::Dark)` (wrapped in `Option`)
+"Two-phase borrows" are a specific, narrow feature about *method-call temporaries* being reserved before activation (RFC 2028, NLL). The scenario described here — taking a shared reborrow of a field through a `&mut App` place while no other borrow is live — is just ordinary NLL field-level reborrowing, not two-phase borrowing. Conflating the two will confuse readers who later look up "two-phase borrow" and find it described differently.
 
-2. **Fix `DockingConfig` usage** — Under 0.15.x, replace `DockingConfig::enabled()` with
-   `DockingConfig { enable: true, auto_dockspace: true, ..Default::default() }`. (If targeting 0.16,
-   use `DockingConfig::full_viewport()` instead.)
+**Fix:** Drop the "two-phase borrow analysis" sentence. The accurate, simpler explanation is: "*`app: &mut App` lets you reborrow any single field as shared or mutable; the borrow checker allows a shared reborrow of `app.graph.nodes` during the render loop because no conflicting borrow of `app.graph` is live at the same time. The moment you try to mutate `app.graph` inside that loop, the reborrow conflicts. So we collect the interaction result into a local first, let the shared reborrow end, then mutate.*" That is what the reference impl's `Interactions` struct actually does.
 
-3. **Resolve the `run_ui` vs `Application` trait gap** — Under 0.15.x, `run_ui` does not exist.
-   Use `run` (which provides `&mut AddOns`) or `AppBuilder::on_frame`, or switch to manual ImNodes
-   context creation. Note that `AddOns.imnodes` is `Option<()>` in 0.15.x — a presence flag, not
-   the actual context — so manual context creation is likely the only viable path regardless.
+---
 
-4. **Provide a companion repository** — Tagged commits per chapter would let readers `cargo run`
-   each step and diff between chapters.
+### D2. Ch. 6 "Drop ordering matters" callout advises a struct field order the shown `App` doesn't need
 
-5. **Fix Rust Book references** — Verify every chapter link against the current edition's table
-   of contents.
+**Where:** Ch. 6 callout:
 
-6. **Fix the borrow checker explanation** in Chapter 7 — Replace the "sub-borrow" framing with
-   an accurate explanation of shared reborrowing.
+> "If you store both `Context` and `EditorContext` in the same struct, **declare the editor context before the ImGui context** so it drops first."
 
-7. **Fix `classify_link_pins`** — Return `Option<(PinId, PinId)>` and remove the `.zip()` hack.
+The `App` struct shown in the same chapter stores `nodes_context` and `editor_context` but **not** the ImGui `Context` (dear-app owns it). The reference impl's `App` also doesn't own the ImGui `Context`. So the callout warns about a layout problem the code doesn't have, which can read as "I should reorder the fields I was just shown."
 
-8. **Add model-level link validation** — `GraphState::add_link` should validate pin directions,
-   not just duplicates.
+**Fix:** Add one sentence: "In this tutorial dear-app owns the ImGui `Context`, so our `App` doesn't store it and this ordering concern doesn't apply yet — but keep it in mind if you ever take ownership of the `Context` yourself (e.g. for multi-viewport)."
 
-9. **Refactor `App`** — Split UI interaction state into a separate `UiState` struct, especially
-   before Chapter 12 claims the architecture is "production-ready."
+---
 
-10. **Fix `Theme::ClassicDark`** → `Theme::Classic`.
+## E. Smaller nits (low priority, but cheap to fix)
 
-11. **Fix the minimap callback borrow conflict** — Collect the hovered ID into a local, then
-    write to `app` after the editor scope.
+- **E1. `lib.rs` is shown in the Ch. 3 file tree and then the callout says to omit it.** "The file tree above shows `lib.rs` for completeness, but we recommend omitting it." Showing a file and immediately telling the reader to delete it is contradictory. Either remove `lib.rs` from the tree (the reference impl has none) or drop the callout. *(The reference `gui/` is binary-only with no `lib.rs`, confirming the recommendation — so just delete the line from the tree.)*
+- **E2. `let editor` vs `let mut editor` is inconsistent across chapters** (Ch. 6 uses `let editor`, Ch. 10's minimap example uses `let mut editor`). The reference impl uses `let mut editor` consistently because the `enable_*` and setter calls take `&mut`. Pick one and be consistent.
+- **E3. `Condition::Once` description (Ch. 4) is vague:** "Applied only when the window first appears, ever." That paraphrase is hard to distinguish from `FirstUseEver`. The ImGui docs define `Once` as "apply the setting once and never again (no first-use tracking)." A one-line clarification would help.
+- **E4. `EditorTheme` field `node_border` vs the `ColorElement::NodeOutline` it sets.** The field is named `node_border` but the API enum variant is `NodeOutline` (both in the tutorial and the reference impl). Minor, but a reader grepping for `NodeBorder` (which the old `imnodes` crate did have) will be confused. Consider renaming the field to `node_outline`.
+- **E5. Ch. 12's tracing filter string is awkward:** `.with_env_filter(env!("CARGO_PKG_NAME").to_owned() + "=debug")`. This works but is clunky; the reference impl uses a plain `.with_env_filter("imgui_tutorial=debug")`. Either is fine — flagging only because the tutorial's version allocates and concatenates at runtime for no benefit.
+- **E6. Intermediate chapters don't always produce compiling code.** Ch. 5's "final" `main.rs` calls `crate::ui::render` → `render_editor`, which reads `app.nodes_context` — a field that doesn't exist on `App` until Ch. 6. There is no "this won't compile until Ch. 6" signpost. A one-line "(this snapshot won't run until we add the ImNodes contexts in Chapter 6)" would prevent a reader from concluding they broke something.
+- **E7. Hardcoded save paths.** Both the tutorial and reference impl hardcode `"graph.json"` and `"layout.ini"` with no file dialog. The ecosystem ships `dear-file-browser` for exactly this; a one-line "for a real editor, wire `dear-file-browser` here" pointer in Ch. 11 would round out the persistence story.
 
-### Overall Assessment
+---
 
-The tutorial is an **ambitious and visually polished** introduction to building GUI applications
-in Rust with the dear-imgui-rs ecosystem. Its pedagogical structure (progressive complexity,
-Rust Book cross-references, data/UI separation) is sound in conception.
+## F. Feature gap vs the reference implementation (not errors, but the tutorial undersells the reference)
 
-**However, the most fundamental problem is that the tutorial targets a pre-release version
-(0.16.0-alpha.1) that has not been published to crates.io.** A reader who follows the
-`Cargo.toml` instructions will immediately get "no matching package version" errors. If they
-correct the versions to the stable 0.15.x release, they will then discover that nearly every
-`dear-app` API in the tutorial — `AppConfig`, `run_ui`, `RunError`, `dear_app::imgui`,
-`DockingConfig` as an enum, the `Application` trait — does not exist in 0.15.x. The tutorial's
-entire application-runner layer would need to be rewritten for the stable release.
+These are things the reference `gui/` does that the tutorial never mentions. None are *wrong*; together they mean the tutorial's "you will build a production-grade editor" promise is modestly overstated relative to what it actually walks through.
 
-Beyond the version mismatch, the tutorial is **further undermined by API inaccuracies that
-prevent the code from compiling** even against the 0.16 it targets — most critically the
-nonexistent `DockingConfig::enabled()` and the architectural contradiction between `run_ui`'s
-closure API and the need for an ImGui context to create ImNodes contexts. A reader who follows
-the tutorial from start to finish will hit a compilation wall at the very first `cargo build`
-(version not found), and even if they work around that, they will hit API walls by Chapter 4
-(docking) and an architectural wall by Chapter 6 (ImNodes context creation).
+1. **Resizable panels via a draggable splitter.** The reference has `gui/src/ui/splitter.rs` (a `vertical_splitter` with an invisible grab handle, draw-list 1px line, and min/max clamping). The tutorial's three-panel layout is fixed-width constants. A reader who wants resizable panels gets no guidance.
+2. **Custom draw-list file-tree styling.** The reference's `panels.rs` paints Zed-style full-width hover/selection rectangles behind tree rows using `ui.get_window_draw_list()`, with explicit care to avoid holding a draw-list borrow across other `Ui` calls (the "DrawListMut already in use" panic). This is a great immediate-mode lesson the tutorial skips entirely.
+3. **HiDPI font loading via `on_fonts` + `rasterizer_density(2.0)`.** The tutorial mentions `on_fonts` only as a comment and the Ch. 12 "Loading a Modern Font" section is one short block; the reference `main.rs` actually wires it and explains *why* `rasterizer_density` is needed (the framebuffer scale isn't available inside `on_fonts`). Consider promoting this into the main font discussion rather than an appendix-style block.
+4. **Custom error type is shown in Ch. 12 but never actually plumbed into `main`'s `?` chain end-to-end** in the tutorial's narrative. The reference `main.rs` returns `Result<(), AppError>` and maps `DearAppError` via `AppError::Init`. The tutorial gets close but the Ch. 12 "Final main.rs" still uses `String`-style `eprintln!` for save errors. Showing the `?`-based path once would close the loop on the Ch. 9 error-handling callouts.
 
-With the fixes outlined above — most importantly, retargeting to the stable 0.15.x release and
-rewriting the dear-app API usage accordingly — this could become an excellent resource. In its
-current state, it serves better as a **conceptual guide** than a **follow-along tutorial** — the
-architectural patterns and explanations are valuable, but the code cannot be directly compiled
-or assembled into a working program without significant independent debugging.
+---
 
-**Rating: 4/10** — Strong pedagogical design and accurate conceptual explanations, but targeting
-an unpublished pre-release version makes the tutorial unusable out of the box, and critical API
-errors persist even against the targeted version.
+## Recommended fix order
+
+1. **A1** [FIXED] (edition 2021 → 2024) — one-line change, unblocks every reader on a current toolchain.
+2. **A2** [FIXED] (`Option` → `Cell`) — one-block change, makes the minimap example compile.
+3. **B1, B2, B3, B4** [FIXED] — prose/identifier consistency, ~10 minutes of edits.
+4. **C1** [FIXED (option a)] — relabelled the "complete" block as incremental + callout pointing to the reference impl's assembled `editor.rs`. Option (b) — inlining the full ~270-line listing into the tutorial — is **[TODO]** (requires validation against a built crate).
+5. **C3** [FIXED] — expanded the "Add Node" branch with the `pending_node_pos` deferral + callout + Ch. 12 `UiState` field.
+6. **D1** [FIXED] — rewrote the borrow explanation; removed the "two-phase borrow" misnomer.
+7. **C2** [FIXED] — added a callout pointing to `gui/src/ui/{file_tree,panels}.rs`. Inlining the full panel code is **[TODO]** (large listing, needs validation).
+8. **C4** [FIXED] — prerequisites raised to Ch. 1–10 + forward-reference note in the Ch. 1 callout.
+9. **D2, E1, E2, E3, E6, E7** [FIXED] — drop-ordering note, removed `lib.rs` from tree, `let mut editor` consistency, `Condition::Once` wording, Ch. 5 signpost, file-browser pointer.
+10. **E4** [FIXED] — kept the `node_border` field name (consistent with reference impl) but added a clarifying comment in the reference `theme.rs` noting it maps to `ColorElement::NodeOutline`.
+11. **E5** [SKIPPED] — the tracing filter string is stylistic, not wrong; left as-is.
+12. **F1–F4** [TODO] — the splitter (`gui/src/ui/splitter.rs`), the draw-list file-tree styling, and end-to-end `?`-based error plumbing in `main` are larger content additions left as TODOs; the HiDPI font block (F3) is already present in Ch. 12.
+
+---
+
+## Appendix A — Issues the reference impl shows as already fixed
+
+The `gui/` source carries several `NOTE:` comments that document tutorial mistakes which the *current* tutorial text no longer contains. They are recorded here so the fix-history is preserved, but they are **not** open issues against the live tutorial.
+
+- **`ColorElement::NodeBorder` → `NodeOutline`.** `gui/src/theme.rs` notes: "The tutorial uses `ColorElement::NodeBorder`, but that variant does not exist in dear-imnodes 0.15.1. The correct name is `NodeOutline`." The current tutorial (Ch. 9 "Setting editor colors" block) already uses `NodeOutline`. ✅ fixed.
+- **`ui.io().mouse_clicked[…]` array access → `ui.is_mouse_clicked(MouseButton::…)`.** `gui/src/ui/editor.rs` notes the old form was wrong. The current tutorial (Ch. 10 context-menu block) uses `ui.is_mouse_clicked(MouseButton::Right)` and `ui.io().mouse_pos()`. ✅ fixed.
+- **`on_frame` arity.** `gui/src/main.rs` notes "the tutorial's `on_frame` uses `move |ui|` (one arg), but the actual dear-app 0.15.1 API is `FnMut(&Ui, &mut AddOns)` — two arguments." The current tutorial (Ch. 6 AppBuilder block) uses `move |ui, _addons|`. ✅ fixed.
+- **Applying the theme in `on_setup` via a free `imnodes::editor()` function.** `gui/src/app.rs` and `editor.rs` note that `editor()` is a method on a `NodesUi` token requiring a `&Ui`, unavailable in `on_setup`. The current tutorial's code defers to the first frame, and (after the B1 fix) the prose now correctly says "apply on the first rendered frame, not in `on_setup`". ✅ fixed.
+
+These stale `NOTE:` comments have been updated in the reference implementation — they now describe the correct behavior the tutorial teaches rather than flagging tutorial bugs, so they no longer imply the tutorial still has issues it doesn't.
