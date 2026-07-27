@@ -288,6 +288,8 @@ impl eframe::App for MyApp {
 
 The `intents` buffer decouples "the user clicked delete" from "delete the node." That decoupling is what lets `ui()` stay mostly immutable and keeps the borrow checker happy.
 
+> **Where do intents get pushed?** Inside `draw_graph` or `draw_panels` — the methods called from `ui()`. For example, a delete button's click handler would do `self.ui_state.intents.push(Intent::DeleteNode(node.id))` rather than calling `self.graph.remove_node(...)` directly. The actual mutation happens in the next frame's `logic()`, which drains the buffer. The `apply_background_result` method called in `logic()` is a placeholder for whatever your app does with loaded data — e.g., parsing bytes into a graph, updating a status message, etc. Define it as a regular `&mut self` method on `MyApp`.
+
 ## Async & Background Work
 
 Long-running work — reading a large file, decoding an image, running a simulation — must not happen on the UI thread or the frame rate collapses. The pattern is:
@@ -465,6 +467,8 @@ if let Some((id, delta)) = self.collect_drag(ui) {
     self.apply_drag(id, delta);
 }
 ```
+
+> **Important: what happens to `GraphState` when we adopt `egui-snarl`?** This chapter builds a pure-data `GraphState` and praises its headless testability — and that praise is justified. But when we introduce `egui-snarl` in [Chapter 8](./ch08-egui-snarl.md), the `Snarl<T>` container **replaces** `GraphState` as the runtime graph data structure. `Snarl<T>` is its own graph container: it owns nodes, positions, and wires, and it provides its own `insert_node` / `connect` / `remove_node` methods. So what is `GraphState` for? It is a **pedagogical stepping stone** — it teaches you the data-model-without-GUI pattern before we introduce a library that already embodies it. Once you adopt `Snarl<T>`, you can either (a) delete the `graph/` module entirely and let `Snarl<T>` be your graph, or (b) keep the `graph/` module purely for its unit test as a regression check. We take option (b) in the reference implementation: the `graph/` module compiles with `#![allow(dead_code)]` so the test still runs, but the runtime path uses `Snarl<T>`. The lesson — *keep your data model testable without a GPU* — carries forward; `Snarl<T>` and `AgentNode` are themselves plain data types that serialize and test cleanly.
 
 ---
 

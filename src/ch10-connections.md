@@ -86,7 +86,7 @@ impl DemoNode {
 Now the `connect` override. The rule: a wire is allowed if the destination expects either nothing (any) or exactly the source's type:
 
 ```rust,no_run
-use egui_snarl::{ui::{InPin, OutPin}, Snarl, SnarlViewer};
+use egui_snarl::{ui::SnarlViewer, InPin, OutPin, Snarl};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     fn connect(
@@ -218,7 +218,7 @@ Wire *color* follows the pin's fill color. This is why color-coding pins by data
 For advanced cases — animated wires, wires with a direction arrow, wires that display a flowing dot — `egui-snarl` lets you take over rendering of an individual wire segment entirely. Override `has_wire_widget` to return `true` for wires you want to customize, and implement `show_wire_widget` to draw into the `ui` positioned along the wire:
 
 ```rust,no_run
-use egui_snarl::ui::{InPin, OutPin, WireId};
+use egui_snarl::{InPin, OutPin, ui::WireId};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     fn has_wire_widget(&mut self, _from: &OutPin, _to: &InPin) -> bool {
@@ -245,7 +245,7 @@ This is rarely needed; we mention it for completeness. The default wire renderin
 Putting the pieces together, here is a `connect` that validates string→string, number→number, and rejects incompatible types, using the `expected_input`/`output_type` helpers from earlier in the chapter:
 
 ```rust,no_run
-use egui_snarl::{ui::{InPin, OutPin}, Snarl, SnarlViewer};
+use egui_snarl::{ui::SnarlViewer, InPin, OutPin, Snarl};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     fn connect(

@@ -7,7 +7,7 @@ In [Chapter 8](./ch08-egui-snarl.md) we built a working node graph with three no
 Every pin on every node is rendered by a call to either `show_input` or `show_output` on your viewer. The signatures are fixed by the `SnarlViewer` trait:
 
 ```rust,no_run
-use egui_snarl::{Snarl, ui::{InPin, OutPin, SnarlPin}};
+use egui_snarl::{Snarl, InPin, OutPin, ui::SnarlPin};
 
 fn show_input(
     &mut self,
@@ -72,8 +72,7 @@ The single most important field on a pin handle is `remotes`. For an `InPin`, `r
 To display the value a connected input receives, you look up the source node:
 
 ```rust,no_run
-use egui_snarl::ui::{InPin, PinInfo, SnarlPin};
-use egui_snarl::Snarl;
+use egui_snarl::{ui::{PinInfo, SnarlPin}, InPin, Snarl};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     # (/* other methods */)
@@ -204,6 +203,8 @@ impl SnarlViewer<DemoNode> for DemoViewer {
     fn show_body(
         &mut self,
         node_id: egui_snarl::NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
         ui: &mut egui::Ui,
         snarl: &mut Snarl<DemoNode>,
     ) {
@@ -232,6 +233,8 @@ impl SnarlViewer<DemoNode> for DemoViewer {
     fn show_footer(
         &mut self,
         node_id: egui_snarl::NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
         ui: &mut egui::Ui,
         snarl: &mut Snarl<DemoNode>,
     ) {
@@ -248,13 +251,23 @@ impl SnarlViewer<DemoNode> for DemoViewer {
 
 Footers are a good place for metadata that does not belong in a pin: a node id, a "muted" badge, an error count. Keep them short — a footer widens the whole node.
 
+> **Warning: provided method signatures vary.** Every provided method on `SnarlViewer` (`show_body`, `show_footer`, `header_frame`, `show_header`, `show_graph_menu`, etc.) has a *different* argument list. `show_body` and `show_footer` take `inputs: &[InPin]` and `outputs: &[OutPin]`; `header_frame` takes a default `Frame`, a `NodeId`, the pin slices, and `&Snarl<T>`; the menu methods take fewer arguments. Always consult the `SnarlViewer` trait definition in the egui-snarl source for the exact signature of the method you are overriding. The five *required* methods (`title`, `inputs`, `outputs`, `show_input`, `show_output`) have consistent signatures, but the provided methods do not.
+
 ## Custom Header Frames per Node Type
 
 `header_frame` returns an `egui::Frame` used for the header of a given node. By matching on the node data, you give each node type a distinct color bar — the visual cue that makes a graph readable at a glance:
 
 ```rust,no_run
 impl SnarlViewer<DemoNode> for DemoViewer {
-    fn header_frame(&mut self, node: &DemoNode, _style: &egui_snarl::SnarlStyle) -> egui::Frame {
+    fn header_frame(
+        &mut self,
+        _frame: egui::Frame,
+        node: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        snarl: &Snarl<DemoNode>,
+    ) -> egui::Frame {
+        let node = &snarl[node];
         let color = match node {
             DemoNode::Number(_) => egui::Color32::from_rgb(80, 50, 50),
             DemoNode::Text(_) => egui::Color32::from_rgb(40, 70, 40),
@@ -277,8 +290,8 @@ Let us assemble a fuller viewer that uses everything so far: color-coded pins, c
 ```rust,no_run
 use eframe::egui;
 use egui_snarl::{
-    ui::{InPin, OutPin, PinInfo, SnarlPin},
-    NodeId, Snarl, SnarlViewer,
+    ui::{PinInfo, SnarlPin, SnarlViewer},
+    InPin, InPinId, NodeId, OutPin, Snarl,
 };
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -322,7 +335,14 @@ impl SnarlViewer<DemoNode> for DemoViewer {
         matches!(node, DemoNode::Concat | DemoNode::Sink)
     }
 
-    fn show_body(&mut self, node_id: NodeId, ui: &mut egui::Ui, snarl: &mut Snarl<DemoNode>) {
+    fn show_body(
+        &mut self,
+        node_id: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        ui: &mut egui::Ui,
+        snarl: &mut Snarl<DemoNode>,
+    ) {
         let node = &snarl[node_id];
         match node {
             DemoNode::Concat => {
@@ -339,9 +359,13 @@ impl SnarlViewer<DemoNode> for DemoViewer {
 
     fn header_frame(
         &mut self,
-        node: &DemoNode,
-        _style: &egui_snarl::SnarlStyle,
+        _frame: egui::Frame,
+        node: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        snarl: &Snarl<DemoNode>,
     ) -> egui::Frame {
+        let node = &snarl[node];
         let color = match node {
             DemoNode::Number(_) => egui::Color32::from_rgb(110, 60, 60),
             DemoNode::Text(_) => egui::Color32::from_rgb(50, 90, 50),

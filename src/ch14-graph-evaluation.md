@@ -414,7 +414,7 @@ Once `self.results` holds an `Ok(EvalResults)`, we can show computed values back
 
 ```rust,no_run
 use std::collections::HashMap;
-use egui_snarl::{NodeId, PinInfo, Snarl, SnarlViewer};
+use egui_snarl::{ui::{PinInfo, SnarlPin, SnarlViewer}, NodeId, OutPin, Snarl};
 
 pub struct AgentViewer {
     pub pending_edits: HashMap<NodeId, AgentNode>,
@@ -425,12 +425,11 @@ pub struct AgentViewer {
 impl SnarlViewer<AgentNode> for AgentViewer {
     fn show_output(
         &mut self,
-        graph: &Snarl<AgentNode>,
-        id: NodeId,
-        _output: usize,
-        node: &AgentNode,
+        pin: &OutPin,
         ui: &mut egui::Ui,
-    ) -> PinInfo {
+        _snarl: &mut Snarl<AgentNode>,
+    ) -> impl SnarlPin + 'static {
+        let id = pin.id.node;
         // ...existing configuration UI elided (see Chapter 13)...
 
         // If we have a computed value for this node, show it.
@@ -443,7 +442,6 @@ impl SnarlViewer<AgentNode> for AgentViewer {
                 );
             }
         }
-        let _ = node;
         PinInfo::circle().with_fill(egui::Color32::from_rgb(80, 200, 120))
     }
 }
@@ -455,8 +453,8 @@ And the host copies the results snapshot onto the viewer each frame before showi
 impl App {
     fn show_graph(&mut self, ui: &mut egui::Ui) {
         self.viewer.results = self.results.as_ref().ok().cloned();
-        egui_snarl::SnarlWidget::new()
-            .id(egui::Id::new("agent_graph"))
+        egui_snarl::ui::SnarlWidget::new()
+            .id_salt(egui::Id::new("agent_graph"))
             .show(&mut self.snarl, &mut self.viewer, ui);
         // apply pending edits, as in Chapter 13
         let pending = std::mem::take(&mut self.viewer.pending_edits);
@@ -470,7 +468,7 @@ impl App {
 The console logs from `EvalResults::logs` can be rendered in a `Panel::bottom`:
 
 ```rust,no_run
-egui::TopBottomPanel::bottom("console").show(ui.ctx(), |ui| {
+egui::Panel::bottom("console").show(ui, |ui| {
     ui.heading("Evaluation log");
     egui::ScrollArea::vertical().show(ui, |ui| {
         if let Some(Ok(results)) = &self.results {
@@ -485,6 +483,10 @@ egui::TopBottomPanel::bottom("console").show(ui.ctx(), |ui| {
 ## Keeping the Evaluator Pure
 
 It is worth re-stating why the evaluator module imports nothing from `egui`. Because it depends only on `egui_snarl::{Snarl, NodeId, ...}` (which themselves are plain data types) and `AgentNode` (a pure-data enum), the entire evaluator can be compiled and tested without a window. A headless CI job can construct a `Snarl<AgentNode>` in code, run `evaluate`, and assert on the resulting strings — exactly the testability we argued for in [Chapter 5](./ch05-architecture.md) and exercised in [Chapter 11](./ch11-interactions.md). We'll write those exact tests in [Chapter 17](./ch17-production.md).
+
+> **Module organization.** The functions in this chapter (`topological_sort`, `build_adjacency`, `eval_node`, `simulate_llm`, `simulate_tool`, `GraphEvaluator`, `EvalResults`, `EvalError`) should all live in a single `src/eval.rs` file. Declare it from `main.rs` with `mod eval;` (following the structure from [Chapter 2](./ch02-project-setup.md) and [Chapter 5](./ch05-architecture.md)). [Chapter 15](./ch15-live-execution.md) references them as `crate::eval::topo_sort`, `crate::eval::evaluate_node`, and `crate::eval::simulate_llm_response` — you may need to rename `topological_sort` to `topo_sort` or add a re-export to match. The key point: all evaluation logic lives in one module with no `egui` dependency, keeping it testable on a headless CI machine.
+
+> **Re-evaluation and `MemoryNode`.** The `GraphEvaluator` carries a `memory: HashMap<NodeId, Vec<String>>` working buffer that persists across `evaluate()` calls. On the first evaluation, the buffer is seeded from the node's serialized `history` field. On subsequent evaluations, the buffer is authoritative — if the user edits the `history` field in the UI between evaluations, the working buffer will not pick up the change. To keep them in sync, either (a) clear the evaluator's `memory` buffer whenever the user edits a `MemoryNode` (detect the edit in `pending_edits`), or (b) re-seed the buffer from the node field at the start of each `evaluate()` call. Option (b) is simpler but loses accumulated context across re-evaluations; option (a) is more correct but requires tracking which nodes were edited.
 
 ---
 

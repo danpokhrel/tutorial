@@ -136,12 +136,12 @@ The number and order of pins a variant exposes is fixed and must match what the 
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::{InPinId, NodeId, OutPinId, PinInfo, Snarl, SnarlViewer};
+use egui_snarl::{ui::{PinInfo, SnarlPin, SnarlViewer}, InPin, OutPin, Snarl};
 
 pub struct AgentViewer;
 
 impl SnarlViewer<AgentNode> for AgentViewer {
-    fn title(&mut self, _graph: &Snarl<AgentNode>, id: NodeId, node: &AgentNode) -> String {
+    fn title(&mut self, node: &AgentNode) -> String {
         match node {
             AgentNode::ChatInput { .. } => "Chat Input".into(),
             AgentNode::StringNode { .. } => "String".into(),
@@ -153,7 +153,7 @@ impl SnarlViewer<AgentNode> for AgentViewer {
         }
     }
 
-    fn inputs(&mut self, _graph: &Snarl<AgentNode>, _id: NodeId, node: &AgentNode) -> usize {
+    fn inputs(&mut self, node: &AgentNode) -> usize {
         match node {
             AgentNode::ChatInput { .. } | AgentNode::StringNode { .. } | AgentNode::OutputNode => 0,
             AgentNode::PromptTemplate { .. }
@@ -164,7 +164,7 @@ impl SnarlViewer<AgentNode> for AgentViewer {
         }
     }
 
-    fn outputs(&mut self, _graph: &Snarl<AgentNode>, _id: NodeId, node: &AgentNode) -> usize {
+    fn outputs(&mut self, node: &AgentNode) -> usize {
         match node {
             AgentNode::OutputNode => 0,
             _ => 1,
@@ -172,6 +172,8 @@ impl SnarlViewer<AgentNode> for AgentViewer {
     }
 }
 ```
+
+> **Important: the real `SnarlViewer` signatures.** The `title`, `inputs`, and `outputs` methods take only `&mut self` and `&T` (the node data) — they do **not** receive the `Snarl` or a `NodeId`. The `show_input`/`show_output` methods receive a `pin: &InPin` or `&OutPin` (which bundles the node id and the `remotes` list), a `&mut Ui`, and a `&mut Snarl<T>`. The `connect` method takes `(&OutPin, &InPin, &mut Snarl<T>)` and returns `()` (not `bool`). These signatures match the egui-snarl 0.11 trait exactly. If you see tutorials showing different signatures (with `&Snarl`, `NodeId`, and `usize` pin indices), they are outdated.
 
 ### Pin Info and the Color System
 
@@ -186,27 +188,21 @@ const CONTROL_PIN: egui::Color32 = egui::Color32::from_rgb(220, 160, 60);
 impl SnarlViewer<AgentNode> for AgentViewer {
     fn show_input(
         &mut self,
-        _graph: &Snarl<AgentNode>,
-        _id: NodeId,
-        _input: usize,
-        _node: &AgentNode,
-        ui: &mut egui::Ui,
-    ) -> PinInfo {
-        // All current inputs are strings. Later, a match on `_input`/`_node`
+        _pin: &InPin,
+        _ui: &mut egui::Ui,
+        _snarl: &mut Snarl<AgentNode>,
+    ) -> impl SnarlPin + 'static {
+        // All current inputs are strings. Later, a match on `_pin.id`
         // can return CONTROL_PIN for non-string pins.
-        let _ = ui;
         PinInfo::circle().with_fill(STRING_PIN)
     }
 
     fn show_output(
         &mut self,
-        _graph: &Snarl<AgentNode>,
-        _id: NodeId,
-        _output: usize,
-        _node: &AgentNode,
-        ui: &mut egui::Ui,
-    ) -> PinInfo {
-        let _ = ui;
+        _pin: &OutPin,
+        _ui: &mut egui::Ui,
+        _snarl: &mut Snarl<AgentNode>,
+    ) -> impl SnarlPin + 'static {
         PinInfo::circle().with_fill(STRING_PIN)
     }
 }
@@ -224,7 +220,7 @@ Here is a partial `SnarlViewer` implementation covering `ChatInput`, `LLMNode`, 
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::{NodeId, PinInfo, Snarl, SnarlViewer};
+use egui_snarl::{ui::{PinInfo, SnarlPin, SnarlViewer}, InPin, NodeId, OutPin, Snarl};
 
 pub struct AgentViewer {
     /// Buffered text edits captured while rendering node bodies, applied
@@ -233,7 +229,7 @@ pub struct AgentViewer {
 }
 
 impl SnarlViewer<AgentNode> for AgentViewer {
-    fn title(&mut self, _g: &Snarl<AgentNode>, _id: NodeId, node: &AgentNode) -> String {
+    fn title(&mut self, node: &AgentNode) -> String {
         match node {
             AgentNode::ChatInput { .. } => "Chat Input".into(),
             AgentNode::LLMNode { model, .. } => format!("LLM ({model})"),
@@ -242,7 +238,7 @@ impl SnarlViewer<AgentNode> for AgentViewer {
         }
     }
 
-    fn inputs(&mut self, _g: &Snarl<AgentNode>, _id: NodeId, node: &AgentNode) -> usize {
+    fn inputs(&mut self, node: &AgentNode) -> usize {
         match node {
             AgentNode::ChatInput { .. } => 0,
             AgentNode::LLMNode { .. } => 2, // system prompt, user message
@@ -251,7 +247,7 @@ impl SnarlViewer<AgentNode> for AgentViewer {
         }
     }
 
-    fn outputs(&mut self, _g: &Snarl<AgentNode>, _id: NodeId, node: &AgentNode) -> usize {
+    fn outputs(&mut self, node: &AgentNode) -> usize {
         match node {
             AgentNode::OutputNode => 0,
             _ => 1,
@@ -260,13 +256,14 @@ impl SnarlViewer<AgentNode> for AgentViewer {
 
     fn show_input(
         &mut self,
-        _graph: &Snarl<AgentNode>,
-        id: NodeId,
-        input: usize,
-        node: &AgentNode,
+        pin: &InPin,
         ui: &mut egui::Ui,
-    ) -> PinInfo {
-        match node {
+        snarl: &mut Snarl<AgentNode>,
+    ) -> impl SnarlPin + 'static {
+        let id = pin.id.node;
+        let input = pin.id.input;
+        let node = snarl[id].clone();
+        match &node {
             AgentNode::LLMNode { system_prompt, .. } if input == 0 => {
                 // System prompt editor on the first input row.
                 let mut buf = system_prompt.clone();
@@ -290,13 +287,13 @@ impl SnarlViewer<AgentNode> for AgentViewer {
 
     fn show_output(
         &mut self,
-        _graph: &Snarl<AgentNode>,
-        id: NodeId,
-        _output: usize,
-        node: &AgentNode,
+        pin: &OutPin,
         ui: &mut egui::Ui,
-    ) -> PinInfo {
-        match node {
+        snarl: &mut Snarl<AgentNode>,
+    ) -> impl SnarlPin + 'static {
+        let id = pin.id.node;
+        let node = snarl[id].clone();
+        match &node {
             AgentNode::ChatInput { message } => {
                 let mut buf = message.clone();
                 ui.text_edit_singleline(&mut buf);
@@ -312,25 +309,31 @@ impl SnarlViewer<AgentNode> for AgentViewer {
             AgentNode::LLMNode { model, temperature, .. } => {
                 // Model selector + temperature slider live in the *output*
                 // row so the node body reads top-to-bottom.
+                let mut temp = *temperature;
+                let mut model_buf = model.clone();
                 ui.horizontal(|ui| {
                     ui.label("Model");
                     egui::ComboBox::from_id_salt("llm_model")
-                        .selected_text(model.as_str())
+                        .selected_text(model_buf.as_str())
                         .show_ui(ui, |ui| {
                             for m in ["gpt-4o-mini", "gpt-4o", "claude-3.5-sonnet"] {
-                                ui.selectable_value(
-                                    &mut String::from(m), // placeholder; real edit below
-                                    model == m,
-                                    m,
-                                );
+                                ui.selectable_value(&mut model_buf, m.to_string(), m);
                             }
                         });
                 });
                 ui.add(
-                    egui::Slider::new(temperature, 0.0..=2.0)
+                    egui::Slider::new(&mut temp, 0.0..=2.0)
                         .text("temp")
                         .fixed_decimals(2),
                 );
+                if temp != *temperature || model_buf != *model {
+                    let mut edited = node.clone();
+                    if let AgentNode::LLMNode { model, temperature, .. } = &mut edited {
+                        *model = model_buf;
+                        *temperature = temp;
+                    }
+                    self.pending_edits.insert(id, edited);
+                }
             }
             _ => {}
         }
@@ -360,25 +363,25 @@ When the user draws a wire between an output pin and an input pin, egui-snarl ca
 For now, every pin carries a string, so any output can connect to any input. That makes the graph maximally flexible, which is nice while learning. We can still add a guard for the obvious structural rule — never connect two inputs or two outputs together — and reserve the hook for richer type checking later:
 
 ```rust,no_run
-use egui_snarl::{InPinId, OutPinId, Snarl, SnarlViewer};
+use egui_snarl::{ui::SnarlViewer, InPinId, OutPinId, InPin, OutPin, Snarl};
 
 impl SnarlViewer<AgentNode> for AgentViewer {
     fn connect(
         &mut self,
-        graph: &mut Snarl<AgentNode>,
-        from: OutPinId,
-        to: InPinId,
-    ) -> bool {
+        from: &OutPin,
+        to: &InPin,
+        snarl: &mut Snarl<AgentNode>,
+    ) {
         // egui-snarl only calls this for valid output→input pairs, so the
         // structural rule is enforced by the framework. We accept all
         // connections because every pin is a string.
-        graph.connect(from, to);
-        true // return false to veto a connection
+        // To veto a connection, simply do NOT call snarl.connect here.
+        snarl.connect(from.id, to.id);
     }
 }
 ```
 
-> **Note:** Returning `false` from `connect` vetoes the connection and the wire is not drawn. When you later introduce a type system (string vs. image vs. structured data pins), this is where you'd inspect the source and target node variants and refuse mismatched types — for example, refusing to wire an `LLMNode` output into a `ToolNode` field that expects a structured query. For now we accept everything.
+> **Note:** To veto a connection, simply do not call `snarl.connect(...)` inside your override — the wire will not be created. When you later introduce a type system (string vs. image vs. structured data pins), this is where you'd inspect the source and target node variants and skip the `snarl.connect` call for mismatched types — for example, refusing to wire an `LLMNode` output into a `ToolNode` field that expects a structured query. For now we accept everything.
 
 ### Toward Real Type Checking
 
@@ -390,7 +393,7 @@ We now have an `AgentNode` enum, a viewer with titles and pins, and configuratio
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::{Snarl, SnarlWidget};
+use egui_snarl::{ui::SnarlWidget, Snarl};
 
 pub struct App {
     pub snarl: Snarl<AgentNode>,
@@ -400,7 +403,7 @@ pub struct App {
 impl App {
     pub fn show_graph(&mut self, ui: &mut egui::Ui) {
         SnarlWidget::new()
-            .id(egui::Id::new("agent_graph"))
+            .id_salt(egui::Id::new("agent_graph"))
             .show(&mut self.snarl, &mut self.viewer, ui);
 
         // Apply any text edits captured during rendering.

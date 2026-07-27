@@ -29,13 +29,13 @@ You pass the style to the widget via `.style(style)`:
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::{SnarlStyle, SnarlWidget};
+use egui_snarl::{SnarlStyle, ui::SnarlWidget};
 
 impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .style(self.style.clone())
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
@@ -161,7 +161,15 @@ impl SnarlViewer<DemoNode> for DemoViewer {
         crate::snarl_theme::pin_for(ty)
     }
 
-    fn header_frame(&mut self, node: &DemoNode, _style: &SnarlStyle) -> egui::Frame {
+    fn header_frame(
+        &mut self,
+        _frame: egui::Frame,
+        node: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        snarl: &Snarl<DemoNode>,
+    ) -> egui::Frame {
+        let node = &snarl[node];
         let color = crate::snarl_theme::header_color(node);
         egui::Frame::default()
             .fill(color)
@@ -180,7 +188,15 @@ We have already shown `header_frame` in [Chapter 9](./ch09-nodes-pins.md) and fo
 For a richer look, vary not just the color but the rounding and stroke per type. A "dangerous" node (one with side effects, like an agent that calls out to a network) might get a thicker border:
 
 ```rust,no_run
-fn header_frame(&mut self, node: &DemoNode, _style: &SnarlStyle) -> egui::Frame {
+fn header_frame(
+    &mut self,
+    _frame: egui::Frame,
+    node: NodeId,
+    _inputs: &[InPin],
+    _outputs: &[OutPin],
+    snarl: &Snarl<DemoNode>,
+) -> egui::Frame {
+    let node = &snarl[node];
     let color = crate::snarl_theme::header_color(node);
     egui::Frame::default()
         .fill(color)
@@ -199,7 +215,7 @@ By default, `SnarlStyle`'s background draws a grid — the classic "graph paper"
 If you want a custom background — for example, a dotted pattern, a watermark, or a "spawn zone" tint — you override `SnarlViewer::draw_background`. The method receives a `&mut Ui` covering the whole canvas and the current `TSTransform` (the pan/zoom transform) so you can draw in *graph* coordinates:
 
 ```rust,no_run
-use egui_snarl::{ui::TSTransform, Snarl, SnarlViewer};
+use egui_snarl::{ui::{TSTransform, SnarlViewer}, Snarl};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     fn draw_background(
@@ -253,7 +269,7 @@ impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui_snarl::SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .style(self.style.clone())
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
@@ -307,7 +323,7 @@ Here is the assembled `ui()` for a fully styled graph — dark node frames, `Edg
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::SnarlWidget;
+use egui_snarl::ui::SnarlWidget;
 
 pub struct SnarlApp {
     snarl: egui_snarl::Snarl<DemoNode>,
@@ -317,7 +333,7 @@ pub struct SnarlApp {
 
 impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::top("toolbar").show_inside(ui, |ui| {
+        egui::Panel::top("toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Node Graph Editor");
                 if ui.button("Reset Style").clicked() {
@@ -327,7 +343,7 @@ impl eframe::App for SnarlApp {
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
             SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .style(self.style.clone())
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
@@ -341,6 +357,8 @@ With the viewer from [Chapter 11](./ch11-interactions.md) returning `pin_for(ty)
 
 The `egui-snarl` demo itself uses the `egui_probe` crate to live-edit its `SnarlStyle` at runtime — a `Probe`-driven inspector that exposes every style field as an editable widget. This is a *debugging* tool, not a production feature, but it is invaluable when you are dialing in a look: you tweak `pin_size`, `corner_radius`, and colors in a running app and see the result instantly.
 
+> **Note:** `egui_probe` is not enabled by default. To use it, add `egui-snarl = { version = "0.11", features = ["serde", "egui-probe"] }` to your `Cargo.toml` and add `egui_probe` as a dependency. Without the feature, `ui.probe(...)` will not resolve.
+
 To try it, add `egui_probe` to your dev-dependencies and, behind a debug flag, render a probe panel:
 
 ```rust,no_run
@@ -349,14 +367,14 @@ use egui_probe::Probe;
 
 impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::SidePanel::left("debug").show_inside(ui, |ui| {
+        egui::Panel::left("debug").show_inside(ui, |ui| {
             ui.heading("Style Probe");
             // Probe generates editable widgets for every public field.
             ui.probe(&mut self.style);
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui_snarl::SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .style(self.style.clone())
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });

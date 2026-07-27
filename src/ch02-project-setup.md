@@ -36,7 +36,7 @@ eframe = { version = "0.35", default-features = false, features = [
     "wayland",       # Linux/Wayland backend (winit)
 ] }
 
-# egui_ex extras: image decoders, svg, http fetching, file dialog helpers.
+# egui_extras: image decoders, svg, http fetching, file dialog helpers.
 egui_extras = { version = "0.35", features = ["image", "svg", "http", "file"] }
 
 # Node-graph widget for the editor we build later in the book.
@@ -60,7 +60,8 @@ A few points worth calling out:
 - **`default-features = false` on eframe.** eframe's defaults pull in everything, including the `glow` (OpenGL) renderer and platform backends you may not want. Being explicit avoids surprising link dependencies—especially on Linux, where an accidental X11/Wayland mismatch causes build pain.
 - **Edition 2024, MSRV 1.92.0.** eframe 0.35 targets edition 2024 idioms (let-chains, `if let` chains, etc.). Setting `rust-version` makes the toolchain requirement explicit.
 - **`egui-snarl` with `serde`.** We will serialize node graphs to disk, so the `serde` feature must be on.
-- **Profile settings.** egui's debug builds are sluggish because so much work happens every frame. The two lines above make `cargo run` (without `--release`) usable by optimizing dependencies, while keeping *your* code compiled fast. For real benchmarking or a smooth experience, still prefer `cargo run --release`.
+- **Profile settings.** egui's debug builds are sluggish because so much work happens every frame. The two lines above make `cargo run` (without `--release`) usable by optimizing dependencies, while keeping *your* code compiled fast. For real benchmarking or a smooth experience, still prefer `cargo run --release`. The `[profile.dev.package."*"]` trick applies `opt-level = 2` only to *dependencies* (egui, wgpu, …), not to your own crate — the `"*"` wildcard targets every package *except* the one being built. Your code stays at `opt-level = 0` (fast to compile), while the heavy libraries run fast enough for interactive use. See the [Cargo profile reference](https://doc.rust-lang.org/cargo/reference/profiles.html) for details.
+- **`x11` and `wayland`** are Linux-only winit backends. On macOS and Windows these features are silently ignored (they compile to no-ops), so listing them is harmless — a single `Cargo.toml` works across all three desktop platforms.
 
 ## The wgpu Backends Gotcha
 
@@ -174,7 +175,7 @@ use eframe::egui;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::new()
+        viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
@@ -196,6 +197,8 @@ impl eframe::App for MyApp {
     }
 }
 ```
+
+> **Why `ViewportBuilder::default()` and not `::new()`?** In egui 0.35, `ViewportBuilder` has **no `new()` constructor** — it derives `Default` and exposes only `with_*` builder methods. Use `ViewportBuilder::default()` and chain `.with_inner_size(...)`, `.with_title(...)`, etc. If you see `ViewportBuilder::new()` in an older tutorial, it will not compile against 0.35.
 
 > **Why `ui` and not `update`?** As of egui 0.34, the old `App::update(ctx, frame)` was split into `logic(ctx, frame)` and `ui(ui, frame)`. In 0.35, `update` is **removed**. You implement `ui` (required) and override `logic` (optional). We explore both in [Chapter 3](./ch03-first-window.md).
 

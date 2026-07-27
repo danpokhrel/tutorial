@@ -35,38 +35,40 @@ impl eframe::App for MyApp {
 
 `set_visuals` updates the context immediately and applies to every widget drawn afterward in the same frame and beyond.
 
-For the familiar sun/moon toggle that matches the Rust Book's own documentation site, use the built-in helper:
+For the familiar sun/moon toggle, older egui versions shipped a built-in helper (`egui::widgets::global_dark_light_mode_buttons`). That helper was **removed in egui 0.35** in favor of the new theme system (`ThemePreference`). The equivalent today is a couple of buttons that call `set_theme`:
 
 ```rust,no_run
+// egui 0.35 replaced global_dark_light_mode_buttons with the theme API:
 ui.horizontal(|ui| {
-    egui::widgets::global_dark_light_mode_buttons(ui);
+    if ui.button("Dark").clicked() {
+        ui.ctx().set_theme(egui::ThemePreference::Dark);
+    }
+    if ui.button("Light").clicked() {
+        ui.ctx().set_theme(egui::ThemePreference::Light);
+    }
 });
 ```
 
-This renders two small buttons that flip between `Visuals::dark()` and `Visuals::light()`. It is the easiest way to give users control.
+This renders two small buttons that flip between the dark and light themes. It is the easiest way to give users control.
 
 ### Following the System Theme
 
-To follow the OS preference, query it once at startup and again whenever you want to react to changes:
+To follow the OS preference, query it once at startup. In egui 0.35 the `eframe::dark_light::detect()` helper was removed; the replacement is `ctx.system_theme()`, which returns an `Option<egui::Theme>` reflecting the OS preference (or `None` on platforms where detection is unavailable):
 
 ```rust,no_run
-fn system_is_dark() -> bool {
-    eframe::dark_light::detect() == eframe::dark_light::Theme::Dark
-}
-
+// egui 0.35: eframe::dark_light::detect() was removed.
+// Use ctx.system_theme() which returns Option<Theme>.
 impl MyApp {
     pub fn new(ctx: &egui::Context) -> Self {
-        ctx.set_visuals(if system_is_dark() {
-            egui::Visuals::dark()
-        } else {
-            egui::Visuals::light()
-        });
+        // Follow the OS theme if available, default to dark.
+        let theme = ctx.system_theme().unwrap_or(egui::Theme::Dark);
+        ctx.set_theme(theme);
         Self { /* ... */ }
     }
 }
 ```
 
-> **Tip:** `eframe::dark_light` is a small crate re-exported by eframe that probes the OS for the current accent/theme. On platforms where detection fails it falls back to dark, which is a safe default for developer tools.
+> **Tip:** `ctx.system_theme()` probes the OS for the current theme and returns `Option<egui::Theme>`. On platforms where detection fails it returns `None`, so falling back to dark — the safe default for developer tools — is a good idea.
 
 ## Per-Widget and Per-Subtree Styling
 
@@ -212,7 +214,7 @@ You can override any of them, or add your own:
 fn tune_text_styles(ctx: &egui::Context) {
     use egui::{FontFamily, TextStyle};
 
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     style.text_styles = [
         (TextStyle::Heading, FontFamily::Proportional, 22.0),
         (TextStyle::Body, FontFamily::Proportional, 15.0),
@@ -222,7 +224,7 @@ fn tune_text_styles(ctx: &egui::Context) {
     ]
     .into_iter()
     .collect();
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 ```
 
@@ -349,22 +351,25 @@ impl EditorTheme {
     pub fn apply(&self, ctx: &egui::Context) {
         let mut visuals = egui::Visuals::dark();
 
-        // Backgrounds.
-        visuals.panel_bg = self.panel_bg;
-        visuals.window_bg = self.panel_bg;
+        // Backgrounds. (egui 0.35 renamed panel_bg → panel_fill,
+        // window_bg → window_fill.)
+        visuals.panel_fill = self.panel_bg;
+        visuals.window_fill = self.panel_bg;
         visuals.extreme_bg_color = self.bg;
 
-        // Widgets.
+        // Widgets. egui 0.35 distinguishes bg_fill (always painted) from
+        // weak_bg_fill (only for widgets with meaningful backgrounds).
+        // For noninteractive, use bg_fill; for the rest, weak_bg_fill.
         visuals.widgets.noninteractive.bg_fill = self.bg;
         visuals.widgets.noninteractive.fg_stroke =
             egui::Stroke::new(1.0, self.text);
-        visuals.widgets.inactive.bg_fill = self.node_bg;
+        visuals.widgets.inactive.weak_bg_fill = self.node_bg;
         visuals.widgets.inactive.fg_stroke =
             egui::Stroke::new(1.0, self.text);
-        visuals.widgets.hovered.bg_fill = self.accent_hover;
+        visuals.widgets.hovered.weak_bg_fill = self.accent_hover;
         visuals.widgets.hovered.fg_stroke =
             egui::Stroke::new(1.0, egui::Color32::WHITE);
-        visuals.widgets.active.bg_fill = self.accent;
+        visuals.widgets.active.weak_bg_fill = self.accent;
         visuals.widgets.active.fg_stroke =
             egui::Stroke::new(1.0, egui::Color32::WHITE);
 
@@ -375,19 +380,26 @@ impl EditorTheme {
         ctx.set_visuals(visuals);
 
         // Geometry: comfortable spacing and slightly rounded widgets.
-        let mut style = (*ctx.style()).clone();
+        // egui 0.35: ctx.style()/set_style() → global_style()/set_global_style().
+        let mut style = (*ctx.global_style()).clone();
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
         style.spacing.button_padding = egui::vec2(10.0, 4.0);
         style.spacing.window_margin = egui::Margin::same(10);
-        for (_style, widget) in style.visuals.widgets.iter_mut() {
-            widget.rounding = egui::Rounding::same(6.0);
-        }
-        ctx.set_style(style);
+        // egui 0.35's Widgets struct has no iter_mut(); set each variant.
+        let corner = egui::CornerRadius::same(6);
+        style.visuals.widgets.noninteractive.corner_radius = corner;
+        style.visuals.widgets.inactive.corner_radius = corner;
+        style.visuals.widgets.hovered.corner_radius = corner;
+        style.visuals.widgets.active.corner_radius = corner;
+        style.visuals.widgets.open.corner_radius = corner;
+        ctx.set_global_style(style);
     }
 }
 ```
 
 > **Note:** `Visuals::dark()` is our starting point; we then override the fields we care about. Starting from a built-in preset and overriding is more robust than building a `Visuals` from scratch, because new egui versions may add fields that default sensibly when you start from a preset.
+
+> **egui 0.35 widget backgrounds:** The `Widgets` struct distinguishes `bg_fill` (always painted) from `weak_bg_fill` (only painted when the widget has a meaningful background, like a button). For most interactive widgets you want `weak_bg_fill`; for `noninteractive` backgrounds you want `bg_fill`. Using the wrong one can cause subtle visual glitches (a button that always shows a background even when you wanted it transparent).
 
 Applying it is a one-liner at startup:
 

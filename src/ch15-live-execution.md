@@ -162,6 +162,8 @@ and so on until `remaining` is empty.
 > **Warning:** Never do heavy computation in `ui()`. It can be called many times per second and
 > will make the app feel sluggish. All evaluation work belongs in `logic()` (or a background
 > thread). See [Chapter 5](./ch05-architecture.md) for the full discussion.
+>
+> **What counts as "heavy"?** As a rule of thumb: anything that takes more than a few milliseconds per call. Reading from a `HashMap`, formatting a string, or building a handful of widgets is fine. Parsing JSON, sorting large vectors, or calling network APIs is not. Our graph evaluator (stepping one node per `logic()` call) is deliberately lightweight — each step is a single `match` on a node variant plus a string operation. If your evaluator does real I/O (LLM API calls), move it to a background thread as shown later in this chapter.
 
 ## Rendering Progress in `ui()`
 
@@ -259,7 +261,7 @@ displays the log lines:
 
 ```rust,no_run
 // In the App::ui method, add the bottom panel BEFORE the central panel:
-egui::TopBottomPanel::bottom("console")
+egui::Panel::bottom("console")
     .default_height(160.0)
     .resizable(true)
     .show(ui, |ui| {
@@ -274,7 +276,7 @@ egui::TopBottomPanel::bottom("console")
 ```
 
 Remember from [Chapter 4](./ch04-layout-widgets.md): panels must be added in the right order.
-`TopBottomPanel::bottom` should come before `CentralPanel` so the central panel shrinks to fill the
+`Panel::bottom` should come before `CentralPanel` so the central panel shrinks to fill the
 remaining space.
 
 ## Simulating Token-by-Token Streaming
@@ -338,7 +340,7 @@ a background thread. The pattern from [Chapter 5](./ch05-architecture.md) applie
 
 ```rust,no_run
 use std::sync::{Arc, Mutex};
-use std::channel::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver};
 
 struct MyApp {
     // Results arrive from the background thread through this channel.
@@ -414,6 +416,8 @@ follow this principle:
   thousands (though for truly massive logs, consider a virtualized list from
   [Chapter 4](./ch04-layout-widgets.md)).
 
+> **Tip:** For the streaming-LLM-tokens loop, `ctx.request_repaint_after(Duration::from_millis(50))` is more appropriate than `ctx.request_repaint()`. The small delay makes each token visible to the user rather than rendering them all in a rapid burst of frames. The `request_repaint_after` method schedules a single repaint after the given duration — perfect for pacing visible output.
+
 ## Putting It Together
 
 Here's the complete `App::ui` method with all the panels wired up:
@@ -421,12 +425,12 @@ Here's the complete `App::ui` method with all the panels wired up:
 ```rust,no_run
 fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
     // 1. Top panel: toolbar with Run/Stop/Clear buttons.
-    egui::TopBottomPanel::top("toolbar").show(ui, |ui| {
+    egui::Panel::top("toolbar").show(ui, |ui| {
         crate::ui::render_toolbar(ui, self);
     });
 
     // 2. Bottom panel: execution log (resizable).
-    egui::TopBottomPanel::bottom("console")
+    egui::Panel::bottom("console")
         .default_height(140.0)
         .resizable(true)
         .show(ui, |ui| {
@@ -440,7 +444,7 @@ fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         });
 
     // 3. Left panel: status and results.
-    egui::SidePanel::left("status")
+    egui::Panel::left("status")
         .default_width(240.0)
         .resizable(true)
         .show(ui, |ui| {
@@ -461,7 +465,7 @@ fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
     // 4. Central panel: the node graph.
     egui::CentralPanel::default().show(ui, |ui| {
         SnarlWidget::new()
-            .id(egui::Id::new("flow-snarl"))
+            .id_salt(egui::Id::new("flow-snarl"))
             .style(self.snarl_style)
             .show(&mut self.snarl, &mut self.viewer, ui);
     });
@@ -474,6 +478,10 @@ panels first, then side panel, then central panel last so it fills the remaining
 ---
 
 We now have a live, streaming evaluation engine that shows progress in real time. The final piece
+of production functionality is persistence — saving and loading the graph so the user's work
+survives across sessions. In [Chapter 16](./ch16-persistence.md) we'll cover eframe's built-in
+persistence, manual save/load with serde, and native file dialogs.
+The final piece
 of production functionality is persistence — saving and loading the graph so the user's work
 survives across sessions. In [Chapter 16](./ch16-persistence.md) we'll cover eframe's built-in
 persistence, manual save/load with serde, and native file dialogs.

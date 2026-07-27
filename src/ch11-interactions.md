@@ -20,10 +20,10 @@ All the `show_*` methods receive a `NodeId` (or, for the graph menu, a `Pos2`) a
 `show_graph_menu` receives `pos: Pos2` — the screen-space point where the user right-clicked — plus the usual `ui` and `snarl`. The natural implementation builds an "Add Node" palette: one button per node type, and `insert_node(pos, node)` on click. Crucially, the new node appears *exactly where the user clicked*, because we pass `pos` straight through:
 
 ```rust,no_run
-use egui_snarl::{Snarl, SnarlViewer};
+use egui_snarl::{Snarl, ui::SnarlViewer};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
-    fn has_graph_menu(&mut self, _snarl: &Snarl<DemoNode>) -> bool {
+    fn has_graph_menu(&mut self, _pos: egui::Pos2, _snarl: &Snarl<DemoNode>) -> bool {
         true // always offer the menu
     }
 
@@ -136,7 +136,7 @@ pub enum AnyPins {
 You match on it to decide which node types are compatible and how to wire the new node. For example, dragging from a `Number` output should offer to spawn a `Sink` (which accepts numbers) pre-connected:
 
 ```rust,no_run
-use egui_snarl::{ui::AnyPins, InPinId, NodeId, OutPinId, Snarl, SnarlViewer};
+use egui_snarl::{ui::{AnyPins, SnarlViewer}, InPinId, NodeId, OutPinId, Snarl};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     fn has_dropped_wire_menu(&mut self, _wires: &AnyPins, _snarl: &Snarl<DemoNode>) -> bool {
@@ -209,7 +209,7 @@ use eframe::egui;
 
 impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::SidePanel::right("selection-panel").show_inside(ui, |ui| {
+        egui::Panel::right("selection-panel").show_inside(ui, |ui| {
             ui.heading("Selection");
             let selected = ui::get_selected_nodes(egui::Id::new("demo-snarl"), ui.ctx());
             if selected.is_empty() {
@@ -224,7 +224,7 @@ impl eframe::App for SnarlApp {
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui_snarl::SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
     }
@@ -299,7 +299,7 @@ impl eframe::App for SnarlApp {
         }
 
         // --- Side panel showing the current selection. ---
-        egui::SidePanel::right("sel").show_inside(ui, |ui| {
+        egui::Panel::right("sel").show_inside(ui, |ui| {
             ui.heading("Selection");
             let selected = egui_snarl::ui::get_selected_nodes(
                 egui::Id::new("demo-snarl"),
@@ -316,7 +316,7 @@ impl eframe::App for SnarlApp {
         // --- The graph itself. ---
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui_snarl::SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
     }
@@ -334,8 +334,8 @@ Bringing it together, here is a viewer that offers the graph menu palette, the n
 ```rust,no_run
 use eframe::egui;
 use egui_snarl::{
-    ui::{AnyPins, get_selected_nodes, InPin, OutPin, PinInfo},
-    InPinId, NodeId, OutPinId, Snarl, SnarlViewer,
+    ui::{AnyPins, get_selected_nodes, PinInfo, SnarlViewer},
+    InPin, InPinId, NodeId, OutPin, OutPinId, Snarl,
 };
 
 #[derive(Default)]
@@ -345,7 +345,7 @@ impl SnarlViewer<DemoNode> for DemoViewer {
     # (/* title, inputs, outputs, show_input, show_output, connect, disconnect
           as in chapters 8–10 */)
 
-    fn has_graph_menu(&mut self, _: &Snarl<DemoNode>) -> bool { true }
+    fn has_graph_menu(&mut self, _: egui::Pos2, _: &Snarl<DemoNode>) -> bool { true }
 
     fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut egui::Ui, snarl: &mut Snarl<DemoNode>) {
         ui.heading("Add Node");
@@ -432,7 +432,7 @@ impl eframe::App for SnarlApp {
             }
         }
 
-        egui::SidePanel::right("sel").show_inside(ui, |ui| {
+        egui::Panel::right("sel").show_inside(ui, |ui| {
             ui.heading("Selection");
             let selected = get_selected_nodes(egui::Id::new("demo-snarl"), ui.ctx());
             if selected.is_empty() {
@@ -444,7 +444,7 @@ impl eframe::App for SnarlApp {
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui_snarl::SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
     }

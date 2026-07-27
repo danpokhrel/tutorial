@@ -44,7 +44,7 @@ use eframe::egui;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::new()
+        viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
             .with_min_inner_size([400.0, 300.0])
             .with_title("flow-builder"),
@@ -59,7 +59,7 @@ fn main() -> eframe::Result {
 }
 ```
 
-`Box::new(|cc| …)` is an `AppCreator`—a boxed closure capturing nothing (it can't; eframe calls it from a context where only `cc` is available). It returns `Result<Box<dyn App>, Box<dyn std::error::Error + Send + Sync>>`, which is why our `HelloApp::new` returns a `Result`: setup steps like loading fonts can fail.
+`Box::new(|cc| …)` is an `AppCreator`—a boxed closure capturing nothing (it can't; eframe calls it from a context where only `cc` is available). It returns `Result<Box<dyn App>, Box<dyn std::error::Error + Send + Sync>>`. The error type must be `Box<dyn Error + Send + Sync>` specifically because eframe is generic over the error so it can be propagated across the thread boundary where the closure is invoked — a plain `Box<dyn Error>` would not be `Send` and the closure would not compile. This is why our `HelloApp::new` returns a `Result` with that exact error type: setup steps like loading fonts can fail, and the `AppCreator` closure needs to forward those errors back to `run_native`. See the Rust Book on [the `Result` type and `?`](https://doc.rust-lang.org/stable/book/ch09-02-recoverable-errors-with-result.html).
 
 ## The `CreationContext` and `App::new`
 
@@ -100,6 +100,8 @@ impl HelloApp {
 
 Because `HelloApp::new` returns a `Result`, the `AppCreator` closure in `main` can propagate setup failures cleanly—a more idiomatic choice than `unwrap()`-ing in `new`. See the Rust Book on [the `Result` type and `?`](https://doc.rust-lang.org/stable/book/ch09-02-recoverable-errors-with-result.html).
 
+> **Tip: `CreationContext` is borrowed, not owned.** The `&CreationContext<'_>` you receive in `new` borrows from the closure invocation — it lives only for the duration of the `AppCreator` call. You **cannot** store it on your `App` struct. If you need something from `cc` (the `egui_ctx`, the `storage`, the integration info), extract what you need into owned data or clone the `Context` (which is `Arc`-backed and cheap to clone) and store *that*.
+
 ## `CentralPanel`: The Root Container
 
 The root `egui::Ui` handed to `App::ui` has **no margin and no background**. If you draw straight into it, your content sits jammed against the window edge and floats on the clear color. You almost always wrap everything in a panel.
@@ -110,14 +112,14 @@ The root `egui::Ui` handed to `App::ui` has **no margin and no background**. If 
 impl eframe::App for HelloApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Panels take &mut Ui since 0.34 — NOT &Context.
-        egui::CentralPanel::default().show(ui.discard_then_recover(), |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("Hello, eframe!");
         });
     }
 }
 ```
 
-> **API note (0.34+).** Panel `show()` methods take a `&mut Ui`, not a `&Context`. In tutorials older than 0.34 you will see `CentralPanel::default().show(ctx, …)`. That no longer compiles. If you are inside `App::ui`, you already have the `Ui`; you can use it directly (or, for the root, use the appropriate panel sequence). When you genuinely need a fresh root UI from a `Context`—for example, in `App::logic` or in a deferred repaint—you can construct one, but the common path is to do all panel work inside `ui`.
+> **API note (0.34+).** Panel `show()` methods take a `&mut Ui`, not a `&Context`. In tutorials older than 0.34 you will see `CentralPanel::default().show(ctx, …)`. That no longer compiles. If you are inside `App::ui`, you already have the `&mut Ui`; just pass it directly — `CentralPanel::default().show(ui, |ui| { … })`. When you genuinely have only a `Context`—for example, in `run_simple_native` or in `App::logic`—you use `.show(ctx, …)` on that path instead, because those entry points give you a `&Context` and construct the root `Ui` internally.
 
 ## Basic Widgets
 
@@ -170,7 +172,7 @@ use eframe::{egui, CreationContext};
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::new()
+        viewport: egui::ViewportBuilder::default()
             .with_inner_size([480.0, 320.0])
             .with_min_inner_size([320.0, 200.0])
             .with_title("flow-builder"),
@@ -203,7 +205,7 @@ impl HelloApp {
 
 impl eframe::App for HelloApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ui.discard_then_recover(), |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("Hello, eframe!");
             ui.separator();
 
@@ -230,7 +232,7 @@ impl eframe::App for HelloApp {
 
 Run it with `cargo run --release`. Type a name, drag the slider, click the button—the values flow straight into your struct and the bottom line updates next frame.
 
-> **Note on `discard_then_recover`.** When you are passed a `&mut Ui` in `App::ui` and want a fresh root to drive `CentralPanel::default().show(...)`, eframe provides a helper to obtain one. In simple cases you can also structure your code so that you drive panels from the context obtained via `frame`/`ctx`. We will standardize on the cleanest pattern in [Chapter 4](./ch04-layout-widgets.md) when we compose multiple panels.
+> **Passing `ui` directly.** When `App::ui` hands you a `&mut Ui`, you pass it straight to `CentralPanel::default().show(ui, …)`. There is no need for a bridge method or a context lookup — the `Ui` is already the right type for `show` in 0.35. We will compose multiple panels in [Chapter 4](./ch04-layout-widgets.md).
 
 ## The `run_ui_native` Shortcut for Quick Prototypes
 

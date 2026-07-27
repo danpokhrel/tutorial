@@ -39,7 +39,7 @@ ctx.input_mut(|i| {
 });
 ```
 
-## Per-Widget Interaction via `Response`
+> **When to use `input_mut`:** You rarely need it. The main use case is `consume_shortcut`, which marks a shortcut as handled so it does not fire twice. For simply reading input state, always use `ctx.input(|i| ...)` (the shared borrow). Mutating input state outside of shortcut consumption is almost never necessary.
 
 Every widget you add to a `Ui` returns a `Response`, which tells you how the user interacted with *that specific widget*. This is the primary way to react to clicks, hovers, and drags:
 
@@ -119,27 +119,27 @@ ctx.input(|i| {
 
 ## Menu Bars
 
-A top menu bar is a `TopBottomPanel` containing a `menu_bar` closure. Inside, `ui.menu_button` creates a dropdown, and `ui.close_menu()` closes it programmatically (useful after an action that should dismiss the menu):
+A top menu bar is a `Panel::top` containing a `MenuBar` closure. Inside, `ui.menu_button` creates a dropdown, and `ui.close()` closes it programmatically (useful after an action that should dismiss the menu):
 
 ```rust,no_run
 use eframe::egui;
 
 impl eframe::App for MyApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::top("menu_bar").show(ui.ctx(), |ui| {
-            egui::menu::bar(ui, |ui| {
+        egui::Panel::top("menu_bar").show(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New").clicked() {
                         self.new_document();
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Open...").clicked() {
                         self.open_document();
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Save").clicked() {
                         self.save();
-                        ui.close_menu();
+                        ui.close();
                     }
                     ui.separator();
                     if ui.button("Quit").clicked() {
@@ -151,7 +151,7 @@ impl eframe::App for MyApp {
                 ui.menu_button("Edit", |ui| {
                     if ui.button("Undo").clicked() {
                         self.undo();
-                        ui.close_menu();
+                        ui.close();
                     }
                 });
             });
@@ -160,7 +160,7 @@ impl eframe::App for MyApp {
 }
 ```
 
-Recall from [Chapter 5](./ch05-architecture.md) that `TopBottomPanel::show` takes the context (or a `&mut Ui`, since 0.34). The menu items are ordinary buttons; their `clicked()` results drive your app state.
+Recall from [Chapter 5](./ch05-architecture.md) that `Panel::show` takes a `&mut Ui` (since 0.34). The menu items are ordinary buttons; their `clicked()` results drive your app state.
 
 ## Context Menus
 
@@ -171,16 +171,16 @@ let response = ui.label("Right-click me");
 response.context_menu(|ui| {
     if ui.button("Rename").clicked() {
         self.ui_state.renaming = true;
-        ui.close_menu();
+        ui.close();
     }
     if ui.button("Delete").clicked() {
         self.delete_selected();
-        ui.close_menu();
+        ui.close();
     }
     ui.separator();
     if ui.button("Duplicate").clicked() {
         self.duplicate_selected();
-        ui.close_menu();
+        ui.close();
     }
 });
 ```
@@ -223,7 +223,7 @@ The `.open(&mut bool)` argument binds the window's open state to a flag. When th
 
 ## Modal Dialogs
 
-egui has **no built-in modal** widget. The idiomatic pattern is an `Area` with `Order::Foreground` placed on top of everything, plus a full-screen dimming layer that intercepts clicks so the user cannot interact with the UI behind it:
+egui 0.35 introduced a built-in **`egui::Modal`** widget — `Modal::new(id).show(ctx, |ui| ...)` returns a `ModalResponse<T>` with a `backdrop_response` you can check for click-to-dismiss. This is the recommended approach. Below we show the manual `Area + Window` pattern for cases where you need fine-grained control or are targeting an older egui; in practice, prefer `egui::Modal` when available:
 
 ```rust,no_run
 use eframe::egui;
@@ -249,7 +249,7 @@ impl ConfirmModal {
         egui::Area::new(egui::Id::new("modal_dimmer"))
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .show(ui.ctx(), |ui| {
+            .show(ui, |ui| {
                 // A transparent-but-clickable layer over the whole screen.
                 let _ =
                     ui.allocate_rect(screen, egui::Sense::click());
@@ -270,7 +270,7 @@ impl ConfirmModal {
             .resizable(false)
             .collapsible(false)
             .movable(false)
-            .show(ui.ctx(), |ui| {
+            .show(ui, |ui| {
                 ui.set_min_width(dialog_size.x);
                 ui.label(&self.message);
                 ui.add_space(10.0);
@@ -366,6 +366,8 @@ impl MyApp {
 ```
 
 > **Note:** On the web, `rfd`'s async dialog must be driven by the browser's event loop and cannot be blocked on with `pollster`. The `Arc<Mutex<...>>` + `request_repaint()` handoff is the same; only the executor differs. Consult the `rfd` crate's web documentation for the exact integration with your async runtime.
+
+> **Note:** `pollster` is not in our `Cargo.toml`. Add `pollster = "0.3"` if you want the async path. However, on native desktop, `rfd::FileDialog::pick_file()` is already synchronous and blocking — you do not need `pollster`, threads, or async at all. The async API is only needed for web (WASM) targets, where `std::thread` is unavailable.
 
 Saving is symmetric — use `save_file()` / `AsyncFileDialog::save_file()`.
 
@@ -548,25 +550,25 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
 
         // --- Menu bar ---
-        egui::TopBottomPanel::top("menu_bar").show(&ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
+        egui::Panel::top("menu_bar").show(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New").clicked() {
                         self.new_document();
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Open...").clicked() {
                         self.open_document(&ctx);
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Save").clicked() {
                         self.save();
-                        ui.close_menu();
+                        ui.close();
                     }
                     ui.separator();
                     if ui.button("Quit").clicked() {
                         self.request_quit();
-                        ui.close_menu();
+                        ui.close();
                     }
                 });
                 ui.menu_button("View", |ui| {
@@ -576,7 +578,7 @@ impl eframe::App for App {
         });
 
         // --- Main content ---
-        egui::CentralPanel::default().show(&ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("Graph Editor");
             ui.label(&self.status);
             ui.checkbox(&mut self.settings_open, "Show settings");
@@ -586,11 +588,11 @@ impl eframe::App for App {
             resp.context_menu(|ui| {
                 if ui.button("New document").clicked() {
                     self.new_document();
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Toggle settings").clicked() {
                     self.settings_open = !self.settings_open;
-                    ui.close_menu();
+                    ui.close();
                 }
             });
         });
@@ -601,10 +603,17 @@ impl eframe::App for App {
                 .open(&mut self.settings_open)
                 .default_pos([120.0, 120.0])
                 .resizable(true)
-                .show(&ctx, |ui| {
+                .show(ui, |ui| {
                     ui.checkbox(&mut self.autosave, "Autosave");
                     ui.label("Theme:");
-                    egui::widgets::global_dark_light_mode_buttons(ui);
+                    ui.horizontal(|ui| {
+                        if ui.button("Dark").clicked() {
+                            ui.ctx().set_theme(egui::ThemePreference::Dark);
+                        }
+                        if ui.button("Light").clicked() {
+                            ui.ctx().set_theme(egui::ThemePreference::Light);
+                        }
+                    });
                 });
         }
 
@@ -636,7 +645,7 @@ impl ConfirmModal {
         egui::Area::new(egui::Id::new("quit_modal_dimmer"))
             .order(egui::Order::Foreground)
             .fixed_pos(screen.min)
-            .show(ui.ctx(), |ui| {
+            .show(ui, |ui| {
                 let _ = ui.allocate_rect(screen, egui::Sense::click());
                 ui.painter().rect_filled(
                     screen,
@@ -654,7 +663,7 @@ impl ConfirmModal {
             .resizable(false)
             .collapsible(false)
             .movable(false)
-            .show(ui.ctx(), |ui| {
+            .show(ui, |ui| {
                 ui.set_min_width(size.x);
                 ui.label(&self.message);
                 ui.add_space(8.0);

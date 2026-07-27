@@ -29,7 +29,7 @@ use eframe;
 #[derive(serde::Serialize, serde::Deserialize)]
 struct MyApp {
     snarl: egui_snarl::Snarl<AgentNode>,
-    snarl_style: egui_snarl::ui::SnarlStyle,
+    snarl_style: egui_snarl::SnarlStyle,
     log_lines: Vec<String>,
     // Note: EvalState is not serialized — it's ephemeral.
 }
@@ -78,6 +78,8 @@ fn auto_save_interval(&self) -> std::time::Duration {
 
 ## Manual Save/Load to JSON Files
 
+> **Note:** `serde_json` is not in our `Cargo.toml` from [Chapter 2](./ch02-project-setup.md). Add `serde_json = "1"` to your `[dependencies]` before using the save/load code in this chapter.
+
 eframe's built-in persistence is great for auto-save, but users also want explicit "Save As" and
 "Open" file operations. For this, we serialize the `Snarl` to a JSON file using
 [`serde_json`](https://crates.io/crates/serde_json):
@@ -125,6 +127,8 @@ impl MyApp {
     }
 }
 ```
+
+> **Note:** `chrono` is not in our `Cargo.toml` from [Chapter 2](./ch02-project-setup.md). Add `chrono = "0.4"` to your `[dependencies]` before using it. Alternatively, if you do not need human-readable timestamps, use `std::time::SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)` to get a Unix epoch duration that requires no extra dependency.
 
 We use `Result<(), String>` for human-readable errors and `map_err` to convert `io::Error` and
 `serde_json::Error` into our string error type. This follows [Rust Book Chapter
@@ -206,11 +210,11 @@ fn render_menu_bar(ui: &mut egui::Ui, app: &mut MyApp) {
         ui.menu_button("File", |ui| {
             if ui.button("New").clicked() {
                 app.pending = Some(PendingAction::NewGraph);
-                ui.close_menu();
+                ui.close();
             }
             if ui.button("Open...").clicked() {
                 app.pending = Some(PendingAction::LoadGraphFrom);
-                ui.close_menu();
+                ui.close();
             }
             ui.separator();
             if ui.button("Save").clicked() {
@@ -220,11 +224,11 @@ fn render_menu_bar(ui: &mut egui::Ui, app: &mut MyApp) {
                 } else {
                     app.pending = Some(PendingAction::SaveGraphAs);
                 }
-                ui.close_menu();
+                ui.close();
             }
             if ui.button("Save As...").clicked() {
                 app.pending = Some(PendingAction::SaveGraphAs);
-                ui.close_menu();
+                ui.close();
             }
         });
     });

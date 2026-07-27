@@ -99,7 +99,7 @@ mod tests {
         let mut snarl = Snarl::new();
         let _input = snarl.insert_node(
             egui::pos2(0.0, 0.0),
-            AgentNode::ChatInput,
+            AgentNode::ChatInput { message: "Hello".into() },
         );
         let _llm = snarl.insert_node(
             egui::pos2(200.0, 0.0),
@@ -131,7 +131,11 @@ mod tests {
         // (In a real test, you'd set up nodes that can form a cycle.)
         // assert!(topo_sort(&snarl).is_err());
     }
+```
 
+> **Note:** The cycle-detection test above is commented out because `make_test_flow` produces a DAG with no cycle. To test cycle detection, create a graph where a node's output feeds back into its own input — e.g., connect `OutputNode`'s input to `ChatInput`'s output, creating a circular dependency. Uncomment and adjust the assertion once you have such a graph.
+
+```rust,no_run
     #[test]
     fn test_evaluate_chat_input() {
         let snarl = make_test_flow();
@@ -248,6 +252,8 @@ Then use `#[cfg(feature = "...")]` to conditionally compile:
 Feature flags are documented in the [Cargo
 Book](https://doc.rust-lang.org/cargo/reference/features.html). The `cfg` attribute is covered in
 the [Rust Reference](https://doc.rust-lang.org/reference/conditional-compilation.html).
+
+> **Note:** `tracing` and `tracing-subscriber` are not in our `Cargo.toml` from [Chapter 2](./ch02-project-setup.md). Add them when you reach this chapter: `tracing = "0.1"` and `tracing-subscriber = "0.3"`.
 
 ## Logging with Tracing
 

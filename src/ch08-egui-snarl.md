@@ -32,7 +32,7 @@ This is the same separation of concerns the Rust Book calls out when introducing
 The trait has five required methods:
 
 ```rust,no_run
-use egui_snarl::{Snarl, SnarlViewer, ui::{InPin, OutPin, SnarlPin}};
+use egui_snarl::{Snarl, InPin, OutPin, ui::{SnarlPin, SnarlViewer}};
 
 impl<T> SnarlViewer<T> for MyViewer {
     /// The title shown in the node's header.
@@ -118,7 +118,7 @@ Now we build the `App` struct. It owns two things: the `Snarl<DemoNode>` (our pe
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::{Snarl, SnarlViewer};
+use egui_snarl::{Snarl, ui::SnarlViewer};
 
 /// The viewer. Holds no persistent state in this minimal example.
 #[derive(Default)]
@@ -158,13 +158,13 @@ Rendering the graph is a single chain of builder calls inside `CentralPanel`. Th
 
 ```rust,no_run
 use eframe::egui;
-use egui_snarl::SnarlWidget;
+use egui_snarl::ui::SnarlWidget;
 
 impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         eframe::egui::CentralPanel::default().show_inside(ui, |ui| {
             SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
     }
@@ -184,7 +184,7 @@ Now we fill in the five required methods. This is where the node content lives.
 These three are straightforward. They take `&T` (the node data) and return static information about the node:
 
 ```rust,no_run
-use egui_snarl::SnarlViewer;
+use egui_snarl::ui::SnarlViewer;
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     fn title(&mut self, node: &DemoNode) -> String {
@@ -225,7 +225,7 @@ These two methods render a single pin. They receive a pin handle (`&InPin` or `&
 Let us start with the output side, which is simpler — when nothing is connected, we show an editable widget for the node's value:
 
 ```rust,no_run
-use egui_snarl::ui::{OutPin, PinInfo, InPin, SnarlPin};
+use egui_snarl::{ui::{PinInfo, SnarlPin}, InPin, OutPin};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
     # (/* title, inputs, outputs as above */)
@@ -303,8 +303,8 @@ Putting it all together, here is the complete, runnable-looking file. Save it as
 ```rust,no_run
 use eframe::egui;
 use egui_snarl::{
-    ui::{InPin, OutPin, PinInfo, SnarlPin},
-    InPinId, OutPinId, Snarl, SnarlViewer, SnarlWidget,
+    ui::{PinInfo, SnarlPin, SnarlViewer, SnarlWidget},
+    InPin, InPinId, OutPin, OutPinId, Snarl,
 };
 use serde::{Deserialize, Serialize};
 
@@ -406,7 +406,7 @@ impl eframe::App for SnarlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             SnarlWidget::new()
-                .id(egui::Id::new("demo-snarl"))
+                .id_salt(egui::Id::new("demo-snarl"))
                 .show(&mut self.snarl, &mut self.viewer, ui);
         });
     }

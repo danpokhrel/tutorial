@@ -28,22 +28,21 @@ ui.horizontal_top(|ui| { /* left_to_right, top aligned */ });
 Panels are the structural backbone of an egui app. There are three families:
 
 - **`CentralPanel`** — fills all remaining space; exactly one per frame, and it must be last.
-- **`SidePanel`** — left or right; has a resizable width.
-- **`TopBottomPanel`** — top or bottom; has a resizable height.
+- **`Panel`** — as of egui 0.35, the former `SidePanel` and `TopBottomPanel` were unified into a single `egui::Panel` type. You pick a side via the constructor: `Panel::left(id)` / `Panel::right(id)` give a resizable left or right column, and `Panel::top(id)` / `Panel::bottom(id)` give a resizable top or bottom bar. (Older code may still reference `SidePanel`/`TopBottomPanel`; on 0.35+ those names no longer exist—use `Panel` instead.)
 
 **Order matters.** Panels claim space from the available rectangle, and each later panel sees only what is left. You must add side panels and top/bottom panels **before** the central panel:
 
 ```rust,no_run
-egui::SidePanel::left("left_panel")
+egui::Panel::left("left_panel")
     .resizable(true)
-    .default_width(220.0)
-    .width_range(150.0..=400.0)
+    .default_size(220.0)
+    .min_size(150.0).max_size(400.0)
     .show(ui, |ui| {
         ui.heading("Controls");
         // ... sidebar widgets ...
     });
 
-egui::TopBottomPanel::top("top_panel")
+egui::Panel::top("top_panel")
     .show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.menu_button("File", |ui| { /* ... */ });
@@ -287,6 +286,8 @@ let mut gain = 0.5_f32;
 ui.add(Knob::new(&mut gain, 0.0..=1.0));
 ```
 
+> **Note on `drag_delta`.** `response.drag_delta()` returns the *per-frame* drag distance in screen pixels — it resets to zero each frame, it is **not** cumulative. The multiplier `0.01` in the Knob scales this per-pixel movement so that dragging 100 pixels changes the value by roughly one full range. If you want a different "feel," adjust the multiplier: a smaller value makes the knob less sensitive.
+
 This is the same shape as Rust's own trait implementations: a type declares it implements a trait, the trait has a required method, and callers treat it uniformly. See Rust Book [Ch. 10 on traits](https://doc.rust-lang.org/stable/book/ch10-02-traits.html). The **two idioms** in the wild are:
 
 1. **A struct implementing `Widget`** (above) — best for reusable, stateful-feeling widgets.
@@ -339,6 +340,8 @@ for item in items.iter_mut() {
     });
 }
 ```
+
+> **Tip: `push_id` accepts `impl Into<Id>`.** `&str`, `String`, `Id`, and integer types all work. Using `name.as_str()` (a `&str`) is cheaper than `format!("toggle_{}", item.id)` because it avoids a heap allocation per row per frame. Reserve `format!` for when you need to combine multiple values into a key; prefer a bare `&str` or `Id` when a single stable key is available.
 
 Other stable-Id tools:
 
@@ -411,9 +414,9 @@ impl Default for LayoutApp {
 impl eframe::App for LayoutApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // 1) Top bar FIRST.
-        egui::TopBottomPanel::top("top_bar")
+        egui::Panel::top("top_bar")
             .show(ui, |ui| {
-                egui::menu::bar(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("New").clicked() { self.rows.clear(); }
                     });
@@ -426,10 +429,10 @@ impl eframe::App for LayoutApp {
             });
 
         // 2) Left sidebar NEXT.
-        egui::SidePanel::left("sidebar")
+        egui::Panel::left("sidebar")
             .resizable(true)
-            .default_width(240.0)
-            .width_range(160.0..=420.0)
+            .default_size(240.0)
+            .min_size(160.0).max_size(420.0)
             .show(ui, |ui| {
                 ui.heading("Controls");
                 ui.separator();
@@ -452,7 +455,7 @@ impl eframe::App for LayoutApp {
                 // Stable Ids keyed on each row's *name*, not its index.
                 for (name, enabled) in self.rows.iter_mut() {
                     ui.push_id(name.as_str(), |ui| {
-                        ui.checkbox(enabled, name);
+                        ui.checkbox(enabled, name.as_str());
                     });
                 }
             });
@@ -480,7 +483,7 @@ impl eframe::App for LayoutApp {
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::new()
+        viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 600.0])
             .with_title("flow-builder"),
         ..Default::default()
