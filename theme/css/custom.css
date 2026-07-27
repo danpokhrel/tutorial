@@ -1,0 +1,231 @@
+/* === Custom overrides to match the danpokhrel tutorial aesthetic === */
+
+/* Import Inter + JetBrains Mono from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Use Inter as the body font (coal theme and dark fallback) */
+.coal body,
+.coal .content,
+html:not(.js) body,
+html:not(.js) .content {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* === Sidebar styling === */
+.coal .sidebar,
+html:not(.js) .sidebar {
+    border-right: 1px solid #30363d;
+}
+
+/* Chapter title in sidebar header */
+.coal .sidebar .chapter,
+html:not(.js) .sidebar .chapter {
+    font-size: 15px;
+    font-weight: 700;
+    color: #e6edf3;
+}
+
+/* Nav links — match danpokhrel style */
+.coal .sidebar .chapter li a,
+.coal .sidebar .chapter li a.active,
+html:not(.js) .sidebar .chapter li a {
+    border-left: 2px solid transparent;
+    transition: all 0.15s ease;
+    font-size: 14px;
+    padding: 7px 20px 7px 24px;
+}
+
+.coal .sidebar .chapter li a:hover,
+html:not(.js) .sidebar .chapter li a:hover {
+    background-color: #161b22;
+    color: #e6edf3;
+}
+
+.coal .sidebar .chapter li a.active,
+html:not(.js) .sidebar .chapter li a.active {
+    background-color: rgba(88, 166, 255, 0.08);
+    border-left-color: #58a6ff;
+    color: #58a6ff;
+    font-weight: 500;
+}
+
+/* Section titles in sidebar */
+.coal .sidebar .chapter li > .section,
+html:not(.js) .sidebar .chapter li > .section {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6e7681;
+}
+
+/* === Content typography === */
+.coal .content h1,
+html:not(.js) .content h1 {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #e6edf3;
+    margin-bottom: 12px;
+}
+
+.coal .content h2,
+html:not(.js) .content h2 {
+    font-size: 26px;
+    font-weight: 600;
+    margin-top: 48px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #21262d;
+    color: #e6edf3;
+}
+
+.coal .content h3,
+html:not(.js) .content h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-top: 36px;
+    color: #e6edf3;
+}
+
+.coal .content h4,
+html:not(.js) .content h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-top: 24px;
+    color: #e6edf3;
+}
+
+.coal .content p,
+html:not(.js) .content p {
+    margin-bottom: 16px;
+    color: #e6edf3;
+}
+
+/* Links — blue accent with subtle underline */
+.coal .content a,
+html:not(.js) .content a {
+    color: #58a6ff;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(88, 166, 255, 0.3);
+    transition: border-color 0.15s;
+}
+
+.coal .content a:hover,
+html:not(.js) .content a:hover {
+    color: #79b8ff;
+    border-bottom-color: #79b8ff;
+}
+
+/* Inline code — cyan accent in a subtle box */
+.coal .content :not(pre) > code,
+html:not(.js) .content :not(pre) > code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.875em;
+    background-color: #1a1f29;
+    color: #39c5cf;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #21262d;
+}
+
+/* === Code blocks — danpokhrel-style with header bar === */
+.coal .content pre,
+html:not(.js) .content pre {
+    margin: 20px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #30363d;
+    background-color: #1a1f29;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+}
+
+/* Code scrollbar */
+.coal .content pre::-webkit-scrollbar,
+html:not(.js) .content pre::-webkit-scrollbar {
+    height: 8px;
+}
+
+.coal .content pre::-webkit-scrollbar-track,
+html:not(.js) .content pre::-webkit-scrollbar-track {
+    background: #1a1f29;
+}
+
+.coal .content pre::-webkit-scrollbar-thumb,
+html:not(.js) .content pre::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 4px;
+}
+
+/* === Blockquotes as callouts === */
+.coal .content blockquote,
+html:not(.js) .content blockquote {
+    margin: 24px 0;
+    padding: 16px 20px;
+    border-radius: 12px;
+    border-left: 4px solid var(--quote-border, #30363d);
+    background-color: rgba(88, 166, 255, 0.06);
+    border-top: 1px solid #21262d;
+    border-right: 1px solid #21262d;
+    border-bottom: 1px solid #21262d;
+}
+
+.coal .content blockquote p,
+html:not(.js) .content blockquote p {
+    font-size: 14.5px;
+    margin-bottom: 6px;
+}
+
+.coal .content blockquote p:last-child,
+html:not(.js) .content blockquote p:last-child {
+    margin-bottom: 0;
+}
+
+/* === Menu bar === */
+.coal .menu-bar,
+html:not(.js) .menu-bar {
+    border-bottom: 1px solid #30363d;
+    background-color: #0d1117;
+}
+
+/* === Tables === */
+.coal .content table td,
+.coal .content table th,
+html:not(.js) .content table td,
+html:not(.js) .content table th {
+    border: 1px solid #30363d;
+    padding: 10px 16px;
+}
+
+.coal .content table th,
+html:not(.js) .content table th {
+    background-color: #161b22;
+    font-weight: 600;
+}
+
+/* === Search bar === */
+.coal #searchbar,
+html:not(.js) #searchbar {
+    border: 1px solid #30363d;
+    background-color: #161b22;
+    border-radius: 6px;
+}
+
+/* === Em (italic) — purple accent like danpokhrel === */
+.coal .content em,
+html:not(.js) .content em {
+    color: #bc8cff;
+}
+
+/* === Smooth scrolling === */
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 80px;
+}

@@ -1,37 +1,47 @@
-# Building a Node Graph Editor in Rust with dear-app
+# Building a Node-Based AI Flow Editor with eframe & egui
 
-A multi-chapter interactive web tutorial that teaches you to build a production-grade
-node graph editor in Rust using the [dear-imgui-rs](https://crates.io/crates/dear-imgui-rs)
-ecosystem (`dear-app`, `dear-imnodes`), aligned with *The Rust Programming Language* book.
+A comprehensive tutorial covering the eframe/egui ecosystem — from your first window to a
+production-grade node-based agentic AI flow builder (like Langflow or Flowise).
 
-## View the tutorial
+Built with [mdBook](https://rust-lang.github.io/mdBook/).
 
-This is a static site. Open `index.html` directly, or visit the published
-GitHub Pages site (served from the root of this repository).
+## Build Locally
 
-## Run locally
+```sh
+# Install mdBook
+cargo install mdbook
 
-Any static file server works, for example:
+# Build the static site
+mdbook build
 
-```bash
-# Python
-python3 -m http.server 8000
-# then open http://localhost:8000
-
-# or Node
-npx serve .
+# Serve with live reload
+mdbook serve --open
 ```
+
+The generated site is in `book/`.
+
+## Deploy to GitHub Pages
+
+This repo includes a GitHub Actions workflow (`.github/workflows/deploy.yml`) that automatically
+builds and deploys the site on every push to `main`/`master`.
+
+After pushing to GitHub:
+
+1. Go to **Settings → Pages**
+2. Under **Build and deployment → Source**, select **GitHub Actions**
+3. The workflow will run and your site will be live at
+   `https://<your-username>.github.io/<repo-name>/`
 
 ## Structure
 
 ```
-index.html      # The full 13-chapter tutorial (single-page app)
-css/style.css   # Styling
-js/main.js      # Sidebar navigation, copy buttons, chapter routing
-.nojekyll       # Tells GitHub Pages to serve files as-is (no Jekyll)
+├── book.toml              # mdBook configuration
+├── src/
+│   ├── SUMMARY.md         # Table of contents
+│   ├── introduction.md    # Introduction
+│   └── ch01–ch18*.md      # 18 tutorial chapters
+├── theme/                 # Custom theme (coal dark mode, Inter font)
+│   └── css/custom.css
+└── .github/workflows/
+    └── deploy.yml          # GitHub Pages CI/CD
 ```
-
-## Source review
-
-See `CRITIQUE.md` for the technical and pedagogical review this tutorial
-was improved against.

@@ -1,10 +1,1 @@
-# OS / editor
-.DS_Store
-Thumbs.db
-*.swp
-*~
-
-# Local server artifacts
-node_modules/
-__pycache__/
-*.log
+book/

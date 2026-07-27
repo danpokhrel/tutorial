@@ -1,0 +1,9 @@
+[book]
+title = "Building a Node-Based AI Flow Editor with eframe & egui"
+authors = ["eframe/egui Tutorial"]
+language = "en"
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+additional-css = ["theme/css/custom.css"]
