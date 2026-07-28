@@ -2,6 +2,8 @@
 
 A flow builder with beautiful nodes and wires is, until something runs, just a drawing. In this chapter we make it *compute*. We'll build a graph evaluator that takes a `Snarl<AgentNode>` and produces an output value for every node, executing them in dependency order so that every node's inputs are ready by the time it runs. The evaluator will live in a pure-Rust module with no `egui` dependency, so it can be unit-tested on a headless CI machine exactly as we planned in [Chapter 5](./ch05-architecture.md) and practiced in [Chapter 11](./ch11-interactions.md). This chapter builds directly on the `AgentNode` enum from [Chapter 13](./ch13-agent-nodes.md).
 
+> **Scope note: not in the reference implementation.** The impl has no `eval` module and no evaluator — like the rest of Part 4, this chapter is forward-looking design. The function names here (`topo_sort`, `evaluate_node`, `simulate_llm_response`) are the public API [Chapter 15](./ch15-live-execution.md) and [Chapter 17](./ch17-production.md) build on, but you will not find them in the implementation.
+
 ## The Evaluation Problem
 
 Given a directed graph of nodes where each node consumes some inputs and produces some outputs, *evaluate* means: produce a value for every node such that every node's inputs are the outputs of the nodes feeding into it. Concretely, for our agent flow:

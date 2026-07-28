@@ -5,6 +5,8 @@ need the other half of a production editor: the ability to save the user's work 
 later. In this chapter we'll cover two layers of persistence — eframe's built-in app-state
 persistence and our own manual save/load to JSON files with native file dialogs.
 
+> **Scope note: not in the reference implementation.** The impl enables eframe's `persistence` feature (so egui's own app/UI state is auto-saved) but ships no manual JSON save/load, no `ProjectFile`, and no `rfd` dependency — that is all Part 4 forward-looking material. (`rfd`, `serde_json`, and `chrono` are flagged in-text as dependencies to add when you reach this chapter; they are not in the impl's `Cargo.toml`.)
+
 ## Two Layers of Persistence
 
 Our flow editor has two distinct kinds of state that need persisting:

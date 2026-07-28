@@ -6,6 +6,8 @@ deployment. This chapter follows the principles from [Rust Book Chapter
 9](https://doc.rust-lang.org/stable/book/ch09-00-error-handling.html) (error handling) and
 [Chapter 11](https://doc.rust-lang.org/stable/book/ch11-00-testing.html) (testing).
 
+> **Scope note: partially in the reference implementation.** The impl *does* practice the testing half of this chapter: `graph/state.rs`, `ui/app.rs` (`seed_demo_graph`), and `ui/viewer.rs` (`read_concat_inputs`) each ship a `#[cfg(test)] mod tests` block — pure-data, headless, no GPU — exactly the discipline below. But the production *plumbing* — the custom `AppError` enum, `tracing`/`tracing-subscriber`, Cargo `[features]`, the `WebRunner`/Trunk web build, and the workspace split — is **not** in the impl. Those remain forward-looking (and `tracing`, like `rfd`/`serde_json`/`chrono`, is flagged in-text as a dependency to add when you reach it).
+
 ## Custom Error Types
 
 Instead of using `String` for errors (as we did in [Chapter 16](./ch16-persistence.md)), a

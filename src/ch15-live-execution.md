@@ -6,6 +6,8 @@ gets the final result. Real agentic AI flow builders like Langflow and Flowise m
 *alive*: you watch each node light up in turn, you see LLM output stream token by token, and you
 can stop mid-run. In this chapter we bring that real-time experience to our flow editor.
 
+> **Scope note: not in the reference implementation.** Live streaming is Part 4 territory and is not present in the impl (which has no evaluator to stream). The `request_repaint`-driven stepping pattern, however, is the real, generally-useful egui technique it claims to be.
+
 ## From One-Shot to Streaming
 
 The key insight is that **egui's repaint model is on-demand**. When the window is idle, no CPU is
