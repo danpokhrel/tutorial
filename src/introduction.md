@@ -166,6 +166,17 @@ engine, live streaming execution, and persistence.
 **Part 5 — Production** (Chapters 17–18) covers error types, testing, feature flags, logging, and
 web/WASM deployment — everything you need to ship a production-grade application.
 
+> **Scope of the reference implementation.** The companion `tutorial-implementation` crate realizes
+> the **core node-graph editor** built across Parts 1–3 (Chapters 1–12): an `eframe` app with a
+> custom dark theme, a four-node `DemoNode` graph (`Number` / `Text` / `Concat` / `Sink`), a
+> `SnarlViewer` with bodies, footers, and add/remove context menus, plus the pure-data `graph/`
+> module and its headless unit tests. It deliberately stops there: the type-validated `connect`
+> (Ch. 10), the `SnarlStyle`/`header_frame` styling (Ch. 12), and all of Part 4 — agent nodes,
+> graph evaluation, live streaming, and JSON persistence — are **forward-looking material the
+> reference implementation does not (yet) ship**. Those chapters teach the patterns you would add
+> next; they are accurate egui/egui-snarl pedagogy, but their code is not mirrored in the
+> implementation. Each such chapter now opens with a short callout noting this.
+
 ## Conventions
 
 Code blocks are the heart of this tutorial. We use `rust` fenced blocks for all Rust code:
