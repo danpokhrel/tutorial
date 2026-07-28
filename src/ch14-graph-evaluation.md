@@ -80,7 +80,7 @@ use std::collections::VecDeque;
 
 /// Returns a topological ordering of the snarl's nodes, or an error
 /// describing a cycle if one exists.
-fn topological_sort(
+fn topo_sort(
     snarl: &Snarl<AgentNode>,
 ) -> Result<Vec<NodeId>, EvalError> {
     let (outgoing, mut indeg) = build_adjacency(snarl);
@@ -261,9 +261,67 @@ fn simulate_tool(tool: &ToolKind, query: &str) -> String {
         ToolKind::Weather => format!("Weather for {query}: 21°C, sunny (simulated)"),
     }
 }
+
+/// Resolve an `LLMNode`'s two inputs from `results` and produce its full
+/// (simulated) response in one shot. This is the convenience wrapper the
+/// streaming UI in [Chapter 15](./ch15-live-execution.md) calls to get the
+/// complete string before revealing it token-by-token.
+fn simulate_llm_response(
+    snarl: &Snarl<AgentNode>,
+    node_id: NodeId,
+    results: &EvalResults,
+) -> String {
+    let AgentNode::LLMNode { model, temperature, system_prompt } = &snarl[node_id] else {
+        return String::new();
+    };
+    let system = snarl
+        .in_pin(InPinId { node: node_id, input: 0 })
+        .remotes
+        .first()
+        .and_then(|out| results.values.get(&out.node))
+        .cloned()
+        .unwrap_or_else(|| system_prompt.clone());
+    let user = snarl
+        .in_pin(InPinId { node: node_id, input: 1 })
+        .remotes
+        .first()
+        .and_then(|out| results.values.get(&out.node))
+        .cloned()
+        .unwrap_or_default();
+    simulate_llm(model, *temperature, &system, &user)
+}
 ```
 
 > **Note:** We deliberately mark `temperature` as used (via `_`) in the simulated LLM. In a real implementation, temperature would seed sampling randomness; for deterministic tests you'd want it fixed or stubbed. Keeping the simulation pure is what makes the evaluator unit-testable, which is the whole point of the architecture from [Chapter 5](./ch05-architecture.md).
+
+### A convenience wrapper: `evaluate_node`
+
+`eval_node` above takes a *node* and its already-gathered *inputs* — that is the shape the `GraphEvaluator` loop uses internally. But the UI in [Chapter 15](./ch15-live-execution.md) and the tests in [Chapter 17](./ch17-production.md) want a simpler, single-call entry point: "given the snarl, a node id, and the results computed so far, what is this node's output string?" We expose that as a thin public wrapper that gathers the inputs and delegates to `eval_node`:
+
+```rust,no_run
+/// Evaluate one node given the snarl and the results computed so far.
+/// Returns the node's output string (empty for terminal `OutputNode`).
+/// This is the entry point the streaming UI and the unit tests call.
+pub fn evaluate_node(
+    snarl: &Snarl<AgentNode>,
+    node_id: NodeId,
+    results: &EvalResults,
+) -> String {
+    let node = &snarl[node_id];
+    if matches!(node, AgentNode::OutputNode) {
+        // Terminal: its received value is already in `results`.
+        return results.values.get(&node_id).cloned().unwrap_or_default();
+    }
+    let inputs = gather_inputs(snarl, node_id, results);
+    // `eval_node` borrows `results` mutably only to push log lines; for the
+    // read-only wrapper we hand it a throwaway clone so the shared borrow
+    // passed in by the caller stays intact.
+    let mut tmp = EvalResults { values: results.values.clone(), logs: Vec::new() };
+    eval_node(node, inputs, &mut tmp).unwrap_or_default()
+}
+```
+
+> **Tip:** The wrapper clones `results.values` so it can hand `eval_node` a `&mut EvalResults` (which it uses only to append log lines) without mutating the caller's snapshot. For the streaming UI this is exactly right: it reads a frozen snapshot per step.
 
 ## The `GraphEvaluator` Struct
 
@@ -285,7 +343,7 @@ impl GraphEvaluator {
     }
 
     pub fn evaluate(&mut self, snarl: &Snarl<AgentNode>) -> Result<EvalResults, EvalError> {
-        let order = topological_sort(snarl)?;
+        let order = topo_sort(snarl)?;
         let mut results = EvalResults::default();
 
         for id in order {
@@ -484,7 +542,7 @@ egui::Panel::bottom("console").show(ui, |ui| {
 
 It is worth re-stating why the evaluator module imports nothing from `egui`. Because it depends only on `egui_snarl::{Snarl, NodeId, ...}` (which themselves are plain data types) and `AgentNode` (a pure-data enum), the entire evaluator can be compiled and tested without a window. A headless CI job can construct a `Snarl<AgentNode>` in code, run `evaluate`, and assert on the resulting strings — exactly the testability we argued for in [Chapter 5](./ch05-architecture.md) and exercised in [Chapter 11](./ch11-interactions.md). We'll write those exact tests in [Chapter 17](./ch17-production.md).
 
-> **Module organization.** The functions in this chapter (`topological_sort`, `build_adjacency`, `eval_node`, `simulate_llm`, `simulate_tool`, `GraphEvaluator`, `EvalResults`, `EvalError`) should all live in a single `src/eval.rs` file. Declare it from `main.rs` with `mod eval;` (following the structure from [Chapter 2](./ch02-project-setup.md) and [Chapter 5](./ch05-architecture.md)). [Chapter 15](./ch15-live-execution.md) references them as `crate::eval::topo_sort`, `crate::eval::evaluate_node`, and `crate::eval::simulate_llm_response` — you may need to rename `topological_sort` to `topo_sort` or add a re-export to match. The key point: all evaluation logic lives in one module with no `egui` dependency, keeping it testable on a headless CI machine.
+> **Module organization.** The functions in this chapter — `topo_sort`, `build_adjacency`, `gather_inputs`, `eval_node` (internal), `evaluate_node` (public wrapper), `simulate_llm`, `simulate_tool`, `simulate_llm_response`, `GraphEvaluator`, `EvalResults`, `EvalError` — should all live in a single `src/eval.rs` file, declared from `main.rs` with `mod eval;` (following the structure from [Chapter 2](./ch02-project-setup.md) and [Chapter 5](./ch05-architecture.md)). [Chapter 15](./ch15-live-execution.md) and [Chapter 17](./ch17-production.md) call `crate::eval::topo_sort`, `crate::eval::evaluate_node`, and `crate::eval::simulate_llm_response`, so keep those exact public names. The key point: all evaluation logic lives in one module with no `egui` dependency, keeping it testable on a headless CI machine.
 
 > **Re-evaluation and `MemoryNode`.** The `GraphEvaluator` carries a `memory: HashMap<NodeId, Vec<String>>` working buffer that persists across `evaluate()` calls. On the first evaluation, the buffer is seeded from the node's serialized `history` field. On subsequent evaluations, the buffer is authoritative — if the user edits the `history` field in the UI between evaluations, the working buffer will not pick up the change. To keep them in sync, either (a) clear the evaluator's `memory` buffer whenever the user edits a `MemoryNode` (detect the edit in `pending_edits`), or (b) re-seed the buffer from the node field at the start of each `evaluate()` call. Option (b) is simpler but loses accumulated context across re-evaluations; option (a) is more correct but requires tracking which nodes were edited.
 
