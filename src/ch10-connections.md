@@ -6,6 +6,8 @@ In [Chapter 9](./ch09-nodes-pins.md) we built rich, editable nodes — but every
 
 A wire is a connection from one `OutPinId` to one `InPinId`. The user creates a wire interactively by *dragging from a pin and releasing on another pin*. `egui-snarl` handles the drag detection and the visual rendering of the in-progress wire; at the moment of release it calls into your viewer to ask whether the connection should be allowed.
 
+> **Reference-impl note:** the demonstration editor this book builds (`DemoNode`: Number / Text / Concat / Sink) does **not** override `connect` — it keeps snarl's default, permissive connect so that any output can wire into any input. That keeps the demo small and lets a reader experiment without type rejections getting in the way. This chapter is an optional enhancement: read it when you want to add type checking to your own graph, and skip it (or come back later) if you just want the demo editor. The reference impl's `DemoViewer` has none of the `connect` / `disconnect` / `drop_*` overrides shown here.
+
 Three methods on `SnarlViewer` govern connections:
 
 | Method | When it is called | Default behavior |
