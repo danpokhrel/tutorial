@@ -223,7 +223,51 @@ The `.open(&mut bool)` argument binds the window's open state to a flag. When th
 
 ## Modal Dialogs
 
-egui 0.35 introduced a built-in **`egui::Modal`** widget — `Modal::new(id).show(ctx, |ui| ...)` returns a `ModalResponse<T>` with a `backdrop_response` you can check for click-to-dismiss. This is the recommended approach. Below we show the manual `Area + Window` pattern for cases where you need fine-grained control or are targeting an older egui; in practice, prefer `egui::Modal` when available:
+egui 0.35 introduced a built-in **`egui::Modal`** widget — `Modal::new(id).show(ctx, |ui| ...)` returns a `ModalResponse<T>` with a `backdrop_response` you can check for click-to-dismiss. This is the recommended approach: it handles the dimming, click-capture, and centering for you, so you do not have to hand-roll an `Area` + `Window` stack.
+
+A quit-confirmation modal is a one-screen read once you have it. Gate it behind a `quit_modal_open: bool` on your `App`, render it only while the flag is set, and dismiss it on Cancel, Escape, backdrop click, or a confirmed Quit:
+
+```rust,no_run
+use eframe::egui;
+
+impl eframe::App for MyApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // ... your normal panels ...
+
+        // --- Quit confirmation modal (egui 0.35's built-in Modal) ---
+        if self.quit_modal_open {
+            let resp = egui::Modal::new(egui::Id::new("quit_modal")).show(ui.ctx(), |ui| {
+                ui.set_min_width(280.0);
+                ui.heading("Quit");
+                ui.label("Quit the application?");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    // Cancel on the button or the Escape key.
+                    let cancel = ui.button("Cancel").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    if cancel {
+                        self.quit_modal_open = false;
+                    }
+                    // Confirm on the button or Enter.
+                    let quit = ui.button("Quit").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if quit {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+            });
+            // Clicking the dimmed backdrop also dismisses the modal.
+            if resp.backdrop_response.clicked() {
+                self.quit_modal_open = false;
+            }
+        }
+    }
+}
+```
+
+> **Tip: intercept the window's close button too.** The OS window-manager close (X) button bypasses your modal by default. To route it through the same confirmation, check `ctx.input(|i| i.viewport().close_requested())` in `logic()` and, when the modal is *not* already open, send `ViewportCommand::CancelClose` and set `quit_modal_open = true`. If the modal is already open, let the request through — the user is insisting. The reference implementation's `App::logic` does exactly this; see ["The Assembled App"](./ch11-interactions.md#the-assembled-app) in [Chapter 11](./ch11-interactions.md).
+
+Below, for completeness and for cases where you need fine-grained control over the dimming/layering that `Modal` does not expose, is the manual `Area + Window` pattern. In practice, prefer `egui::Modal`.
 
 ```rust,no_run
 use eframe::egui;
