@@ -283,6 +283,8 @@ impl SnarlViewer<DemoNode> for DemoViewer {
 
 The signature gives you the node data (`&T`) and the active `SnarlStyle` (so you can respect global settings like corner radius). This is the pattern-matching-on-enums idea from the Rust Book's [Chapter 6.2](https://doc.rust-lang.org/stable/book/ch06-02-match.html): one `match` expression drives a per-variant decision, and the compiler guarantees we handled every variant. If we later add `DemoNode::Boolean`, the `match` will fail to compile until we pick a color for it — a free correctness check.
 
+> **Note: this is an optional enhancement.** The reference implementation's `DemoViewer` does **not** override `header_frame` — it keeps snarl's default header, so the "Complete Rich Node Example" below omits it. We show `header_frame` here because it is a common and useful customization; add it to your own viewer only if you want per-type color bars.
+
 ## A Complete Rich Node Example
 
 Let us assemble a fuller viewer that uses everything so far: color-coded pins, connected-vs-unconnected branching, a body on the `Sink`, and colored headers. We extend the node enum with a `Concat` node (two text inputs, one text output) to show multi-pin rendering:
@@ -357,38 +359,15 @@ impl SnarlViewer<DemoNode> for DemoViewer {
         }
     }
 
-    fn header_frame(
-        &mut self,
-        _frame: egui::Frame,
-        node: NodeId,
-        _inputs: &[InPin],
-        _outputs: &[OutPin],
-        snarl: &Snarl<DemoNode>,
-    ) -> egui::Frame {
-        let node = &snarl[node];
-        let color = match node {
-            DemoNode::Number(_) => egui::Color32::from_rgb(110, 60, 60),
-            DemoNode::Text(_) => egui::Color32::from_rgb(50, 90, 50),
-            DemoNode::Concat => egui::Color32::from_rgb(60, 60, 110),
-            DemoNode::Sink => egui::Color32::from_rgb(50, 50, 70),
-        };
-        egui::Frame::default()
-            .fill(color)
-            .corner_radius(4.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
-    }
-
     fn show_input(
         &mut self,
         pin: &InPin,
         ui: &mut egui::Ui,
         snarl: &mut Snarl<DemoNode>,
     ) -> impl SnarlPin + 'static {
-        // Save the source ids before borrowing snarl mutably.
-        let remotes: Vec<egui_snarl::OutPinId> = pin.remotes.clone();
-
-        if let Some(remote) = remotes.first() {
-            // Connected: show the source value, read-only.
+        // `InPin` owns its `remotes` list, so borrowing it alongside `&snarl`
+        // is fine — no clone needed.
+        if let Some(remote) = pin.remotes.first() {
             match &snarl[remote.node] {
                 DemoNode::Number(v) => ui.label(format!("{v}")),
                 DemoNode::Text(s) => ui.label(s),
@@ -397,7 +376,6 @@ impl SnarlViewer<DemoNode> for DemoViewer {
             };
             PinInfo::circle().with_fill(egui::Color32::from_rgb(220, 80, 80))
         } else {
-            // Unconnected: for the Sink/Concat, show a placeholder.
             ui.label("—");
             PinInfo::circle().with_fill(egui::Color32::from_rgb(120, 120, 120))
         }
@@ -420,26 +398,38 @@ impl SnarlViewer<DemoNode> for DemoViewer {
                 PinInfo::circle().with_fill(egui::Color32::from_rgb(80, 200, 80))
             }
             DemoNode::Concat => {
-                // The output is computed; just label it.
                 ui.label("out");
                 PinInfo::circle().with_fill(egui::Color32::from_rgb(80, 200, 80))
             }
-            DemoNode::Sink => unreachable!("Sink has no output pins"),
+            // `outputs()` returns 0 for Sink, so the widget never calls this.
+            // Stay defensive anyway: a GUI should grey out, not crash, if a
+            // future edit makes the pin counts inconsistent.
+            DemoNode::Sink => {
+                ui.label("—");
+                PinInfo::circle().with_fill(egui::Color32::from_rgb(120, 120, 120))
+            }
         }
     }
 }
 
-/// Helper: read the two text inputs of a Concat node as owned strings.
-fn read_concat_inputs(node_id: NodeId, snarl: &Snarl<DemoNode>) -> (String, String) {
-    let read = |input: usize| -> String {
-        let in_pin = snarl.in_pin(egui_snarl::InPinId { node: node_id, input });
-        if let Some(remote) = in_pin.remotes.first() {
-            match &snarl[remote.node] {
-                DemoNode::Text(s) => s.clone(),
-                _ => String::new(),
-            }
-        } else {
-            String::new()
+/// Helper: read the two inputs of a Concat node as displayable strings.
+///
+/// Borrows from the snarl where possible (`Text`) so the per-frame call in
+/// `show_body` does not allocate; a wired `Number` is formatted on demand.
+/// Unwired or non-displayable inputs read as empty.
+fn read_concat_inputs<'a>(
+    node_id: NodeId,
+    snarl: &'a Snarl<DemoNode>,
+) -> (std::borrow::Cow<'a, str>, std::borrow::Cow<'a, str>) {
+    let read = |input: usize| -> std::borrow::Cow<'a, str> {
+        let in_pin = snarl.in_pin(InPinId { node: node_id, input });
+        match in_pin.remotes.first() {
+            Some(remote) => match &snarl[remote.node] {
+                DemoNode::Text(s) => std::borrow::Cow::Borrowed(s.as_str()),
+                DemoNode::Number(v) => std::borrow::Cow::Owned(v.to_string()),
+                _ => std::borrow::Cow::Borrowed(""),
+            },
+            None => std::borrow::Cow::Borrowed(""),
         }
     };
     (read(0), read(1))
@@ -456,7 +446,9 @@ The `read_concat_inputs` helper is an example of pulling reusable logic out of t
 
 Because `show_input` and `show_output` receive `&mut Snarl<T>`, you can mutate node data *while rendering*. This is how inline editing works: there is no "edit buffer" — the `DragValue` directly mutates the `f64` inside `DemoNode::Number`, and the `TextEdit` directly mutates the `String` inside `DemoNode::Text`. Next frame, the new value is simply there.
 
-This is powerful but demands care with borrow ordering. The recurring gotcha is `pin.remotes` and `snarl[node]` both borrowing the `Snarl`. The rule that always works: **extract `Copy` ids from the pin first, drop the borrow of the pin's `remotes`, then index `snarl`.** In the example above we `clone`d the `remotes` into an owned `Vec<OutPinId>` — a tiny allocation, but it makes the borrow trivially sound. If `remotes` were huge you could instead copy just the first id (`pin.remotes.first().copied()`) and end the borrow immediately.
+This is powerful but demands care with borrow ordering. The recurring gotcha is `pin.remotes` and `snarl[node]` both borrowing the `Snarl`. In our `show_input` we sidestep it cheaply: `InPin` *owns* its `remotes` list (it is not a borrow of the `Snarl`'s internal storage), so reading `pin.remotes.first()` to get a `Copy` `OutPinId` and then indexing `&snarl[remote.node]` is sound — the borrow of `remotes` is tied to `pin`, not to a `&Snarl` borrow that conflicts with the indexing. The only thing you must *not* do is hold a `&mut Snarl` borrow (from `snarl[node_id] = ...`) while still reading `pin.remotes`.
+
+The rule that always works: **read `Copy` ids out of the pin first (or rely on `InPin` owning its `remotes`), then index the `Snarl`.** When you genuinely need to *mutate* based on `remotes` — for instance in `connect` ([Chapter 10](./ch10-connections.md)) or `drop_outputs` — copy the ids into an owned `Vec` first (`let remotes: Vec<_> = pin.remotes.iter().copied().collect();`), end the pin borrow, then mutate. The tiny allocation makes the borrow trivially sound.
 
 This discipline is the Rust Book's [Chapter 4](https://doc.rust-lang.org/stable/book/ch04-02-references-and-borrowing.html) advice in miniature: a mutable borrow must be the *only* borrow of that data. When two parts of your code both need the `Snarl`, stagger the borrows so they never overlap.
 
