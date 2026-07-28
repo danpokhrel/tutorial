@@ -23,7 +23,7 @@ All the `show_*` methods receive a `NodeId` (or, for the graph menu, a `Pos2`) a
 use egui_snarl::{Snarl, ui::SnarlViewer};
 
 impl SnarlViewer<DemoNode> for DemoViewer {
-    fn has_graph_menu(&mut self, _pos: egui::Pos2, _snarl: &Snarl<DemoNode>) -> bool {
+    fn has_graph_menu(&mut self, _pos: egui::Pos2, _snarl: &mut Snarl<DemoNode>) -> bool {
         true // always offer the menu
     }
 
@@ -33,8 +33,7 @@ impl SnarlViewer<DemoNode> for DemoViewer {
         ui: &mut egui::Ui,
         snarl: &mut Snarl<DemoNode>,
     ) {
-        ui.label("Add Node");
-        ui.separator();
+        ui.label("Add node");
 
         if ui.button("Number").clicked() {
             snarl.insert_node(pos, DemoNode::Number(0.0));
@@ -106,9 +105,7 @@ fn show_node_menu(
     ui: &mut egui::Ui,
     snarl: &mut Snarl<DemoNode>,
 ) {
-    ui.label(format!("Node {}", node_id.0));
-    ui.separator();
-    if ui.button("Remove").clicked() {
+    if ui.button("Remove node").clicked() {
         // remove_node returns the node data; wires are cleaned up automatically.
         let _removed = snarl.remove_node(node_id);
         ui.close();
@@ -452,6 +449,224 @@ impl eframe::App for SnarlApp {
 ```
 
 With this in place, the editor is fully interactive: right-click the background to add nodes, right-click a node to remove it, drag a wire to empty space to spawn a pre-connected node, hover a node for a description, and press Delete to remove the current selection.
+
+## The Assembled App
+
+Everything in this part — the panels of [Chapter 4](./ch04-layout-widgets.md), the menus and modal of [Chapter 7](./ch07-input-menus.md), and the snarl viewer of [Chapters 8–11](./ch09-nodes-pins.md) — comes together in one `App`. The reference implementation's `ui/app.rs` is exactly that assembly, so it is worth seeing whole. It owns the `Snarl<DemoNode>` and the `DemoViewer`, plus three ephemeral flags (`settings_open`, `quit_modal_open`, `status`); it renders a top menu bar, a left sidebar of live graph stats, a bottom status bar, and the central snarl canvas, then layers a settings window and a quit-confirmation modal on top.
+
+The `App::new` wires the theme from [Chapter 6](./ch06-theming.md) and the image loaders, and seeds the graph from a small, headlessly-testable helper:
+
+```rust,no_run
+// src/ui/app.rs
+use crate::theme::EditorTheme;
+use crate::ui::viewer::{DemoNode, DemoViewer};
+use eframe::egui;
+use egui_snarl::{InPinId, OutPinId, Snarl, ui::SnarlWidget};
+
+pub struct App {
+    snarl: Snarl<DemoNode>,
+    viewer: DemoViewer,
+    settings_open: bool,
+    quit_modal_open: bool,
+    status: String,
+}
+
+/// The platform quit shortcut: Cmd+Q on macOS, Ctrl+Q elsewhere.
+fn quit_shortcut() -> egui::KeyboardShortcut {
+    egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Q)
+}
+
+/// Build the four-node demo graph the app starts with.
+/// Extracted from `App::new` so it can be unit-tested headless —
+/// `Snarl` is pure data and needs neither a GPU nor an egui `Context`.
+fn seed_demo_graph() -> Snarl<DemoNode> {
+    let mut snarl = Snarl::new();
+    let n = snarl.insert_node(egui::pos2(-280.0, -40.0), DemoNode::Number(42.0));
+    let t = snarl.insert_node(egui::pos2(-280.0, 60.0), DemoNode::Text("hello".into()));
+    let c = snarl.insert_node(egui::pos2(-40.0, 0.0), DemoNode::Concat);
+    let s = snarl.insert_node(egui::pos2(220.0, 0.0), DemoNode::Sink);
+    // NB: keep the `connect` calls OUTSIDE `debug_assert!` — its argument is
+    // not evaluated in release builds, which would silently drop the wires.
+    let wired = snarl.connect(
+        OutPinId { node: n, output: 0 },
+        InPinId { node: c, input: 0 },
+    ) && snarl.connect(
+        OutPinId { node: t, output: 0 },
+        InPinId { node: c, input: 1 },
+    ) && snarl.connect(
+        OutPinId { node: c, output: 0 },
+        InPinId { node: s, input: 0 },
+    );
+    debug_assert!(wired, "seed graph connections must not be duplicates");
+    snarl
+}
+
+impl App {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        EditorTheme::dark().apply(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
+        Ok(Self {
+            snarl: seed_demo_graph(),
+            viewer: DemoViewer,
+            settings_open: false,
+            quit_modal_open: false,
+            status: "Ready".into(),
+        })
+    }
+}
+```
+
+`logic()` handles the quit shortcut and — importantly — intercepts the window's native close button so it routes through the same confirmation modal instead of quitting immediately:
+
+```rust,no_run
+impl eframe::App for App {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.input_mut(|i| {
+            if i.consume_shortcut(&quit_shortcut()) {
+                self.quit_modal_open = true;
+            }
+        });
+
+        // The window's native close button must not bypass the confirmation
+        // modal: cancel the close and route it through the same modal. If the
+        // modal is already open, the request is allowed through (the user is
+        // insisting).
+        if ctx.input(|i| i.viewport().close_requested()) && !self.quit_modal_open {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.quit_modal_open = true;
+        }
+    }
+    // ui() shown below…
+}
+```
+
+`ui()` lays the panels out in the order [Chapter 4](./ch04-layout-widgets.md) prescribes — top, left, bottom, then central last — and uses egui 0.35's built-in `Modal` for the quit confirmation (no hand-rolled dimmer needed, unlike the [Chapter 7](./ch07-input-menus.md) example):
+
+```rust,no_run
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 1) Top menu bar FIRST.
+        egui::Panel::top("menu_bar").show(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Reset graph").clicked() {
+                        self.snarl = Snarl::new();
+                        self.status = "Graph cleared".into();
+                        ui.close();
+                    }
+                    ui.separator();
+                    let quit_btn = egui::Button::new("Quit")
+                        .shortcut_text(ui.ctx().format_shortcut(&quit_shortcut()));
+                    if ui.add(quit_btn).clicked() {
+                        self.quit_modal_open = true;
+                        ui.close();
+                    }
+                });
+                ui.menu_button("View", |ui| {
+                    ui.checkbox(&mut self.settings_open, "Settings");
+                });
+            });
+        });
+
+        // 2) Left sidebar NEXT.
+        egui::Panel::left("sidebar")
+            .resizable(true)
+            .default_size(220.0)
+            .min_size(160.0)
+            .max_size(400.0)
+            .show(ui, |ui| {
+                ui.heading("Graph");
+                ui.separator();
+                ui.label(format!("Nodes: {}", self.snarl.nodes().count()));
+                ui.label(format!("Wires: {}", self.snarl.wires().count()));
+                ui.separator();
+                ui.label("Drag node headers to move.");
+                ui.label("Drag background to pan.");
+                ui.label("Ctrl+scroll to zoom.");
+                ui.label("Drag from a pin to wire.");
+            });
+
+        // 3) Bottom status bar: the last event message plus live graph stats.
+        egui::Panel::bottom("status_bar")
+            .default_size(24.0)
+            .resizable(false)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "{} · {} nodes · {} wires",
+                        self.status,
+                        self.snarl.nodes().count(),
+                        self.snarl.wires().count()
+                    ));
+                });
+            });
+
+        // 4) Central panel LAST — the node graph canvas.
+        egui::CentralPanel::default().show(ui, |ui| {
+            SnarlWidget::new()
+                .id_salt(egui::Id::new("demo-snarl"))
+                .show(&mut self.snarl, &mut self.viewer, ui);
+        });
+
+        // --- Settings floating window ---
+        if self.settings_open {
+            egui::Window::new("Settings")
+                .open(&mut self.settings_open)
+                .default_pos([140.0, 140.0])
+                .resizable(true)
+                .show(ui, |ui| {
+                    ui.label("Theme: dark (custom)");
+                    ui.label(format!("Status: {}", self.status));
+                });
+        }
+
+        // --- Quit confirmation modal (using egui 0.35's built-in Modal) ---
+        if self.quit_modal_open {
+            let resp = egui::Modal::new(egui::Id::new("quit_modal")).show(ui.ctx(), |ui| {
+                ui.set_min_width(280.0);
+                ui.heading("Quit");
+                ui.label("Quit the application?");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    let cancel = ui.button("Cancel").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    if cancel {
+                        self.quit_modal_open = false;
+                    }
+                    let quit = ui.button("Quit").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if quit {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+            });
+            if resp.backdrop_response.clicked() {
+                self.quit_modal_open = false;
+            }
+        }
+    }
+}
+```
+
+A couple of details worth calling out. The `App::new` signature takes `&eframe::CreationContext<'_>` and returns `Result<Self, Box<dyn std::error::Error + Send + Sync>>` — the same `Result`-returning `AppCreator` pattern from [Chapter 3](./ch03-first-window.md), so setup failures propagate cleanly. The seed graph is built in a standalone `seed_demo_graph()` function (not inline in `new`) precisely so it can be unit-tested without a `Context`:
+
+```rust,no_run
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seed_graph_has_four_nodes_and_three_wires() {
+        let snarl = seed_demo_graph();
+        assert_eq!(snarl.nodes().count(), 4);
+        assert_eq!(snarl.wires().count(), 3);
+    }
+}
+```
+
+> **Scope note.** This assembled `App` plus the `DemoViewer` from [Chapter 9](./ch09-nodes-pins.md) and [Chapter 11](./ch11-interactions.md) is the entirety of the reference implementation's interactive editor — it deliberately omits the type-validated `connect` ([Chapter 10](./ch10-connections.md)), the dropped-wire/hover/selection features shown earlier in this chapter, and the custom `SnarlStyle`/`header_frame` of [Chapter 12](./ch12-styling-graph.md). Those are taught as optional enhancements; the shipped demo stays lean. The agent-flow evaluation, streaming, and persistence of Part 4 are *not* in the reference implementation at all — see the introduction's note on scope.
 
 ## Summary
 
