@@ -293,7 +293,6 @@ impl MyApp {
         let image = egui::ColorImage {
             size,
             pixels,
-            format: egui::ColorImageFormat::Rgba8,
         };
         let texture =
             ctx.load_texture("my-gradient", image, egui::TextureOptions::LINEAR);
@@ -349,6 +348,11 @@ impl EditorTheme {
 
     /// Apply the theme to a context: visuals, style, and fonts together.
     pub fn apply(&self, ctx: &egui::Context) {
+        // Pin the app to dark mode. Without this, egui follows the system
+        // theme and `set_visuals` below would only restyle whichever theme
+        // happened to be active (or not apply at all on a light-mode OS).
+        ctx.set_theme(egui::Theme::Dark);
+
         let mut visuals = egui::Visuals::dark();
 
         // Backgrounds. (egui 0.35 renamed panel_bg → panel_fill,
