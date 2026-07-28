@@ -481,7 +481,3 @@ We now have a live, streaming evaluation engine that shows progress in real time
 of production functionality is persistence — saving and loading the graph so the user's work
 survives across sessions. In [Chapter 16](./ch16-persistence.md) we'll cover eframe's built-in
 persistence, manual save/load with serde, and native file dialogs.
-The final piece
-of production functionality is persistence — saving and loading the graph so the user's work
-survives across sessions. In [Chapter 16](./ch16-persistence.md) we'll cover eframe's built-in
-persistence, manual save/load with serde, and native file dialogs.
