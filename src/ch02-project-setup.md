@@ -36,8 +36,8 @@ eframe = { version = "0.35", default-features = false, features = [
     "wayland",       # Linux/Wayland backend (winit)
 ] }
 
-# egui_extras: image decoders, svg, http fetching, file dialog helpers.
-egui_extras = { version = "0.35", features = ["image", "svg", "http", "file"] }
+# egui_extras: image decoders and svg support for `install_image_loaders`.
+egui_extras = { version = "0.35", features = ["image", "svg"] }
 
 # Node-graph widget for the editor we build later in the book.
 egui-snarl = { version = "0.11", features = ["serde"] }
@@ -45,11 +45,11 @@ egui-snarl = { version = "0.11", features = ["serde"] }
 # Serialization for persistence and for snarl snapshots.
 serde = { version = "1", features = ["derive"] }
 
-# Native file dialogs (Open/Save) used by the editor's import/export.
-rfd = "0.15"
-
 [profile.release]
-opt-level = 2   # egui needs reasonable optimization to feel responsive
+opt-level = 2        # egui needs reasonable optimization to feel responsive
+lto = "thin"         # cross-crate inlining without full-LTO compile times
+codegen-units = 1    # better optimization at the cost of slower release builds
+strip = "symbols"    # smaller binaries; debug info lives in the build, not the artifact
 
 [profile.dev.package."*"]
 opt-level = 2   # build *dependencies* (egui, wgpu, ...) optimized even in dev
@@ -60,33 +60,17 @@ A few points worth calling out:
 - **`default-features = false` on eframe.** eframe's defaults pull in everything, including the `glow` (OpenGL) renderer and platform backends you may not want. Being explicit avoids surprising link dependencies—especially on Linux, where an accidental X11/Wayland mismatch causes build pain.
 - **Edition 2024, MSRV 1.92.0.** eframe 0.35 targets edition 2024 idioms (let-chains, `if let` chains, etc.). Setting `rust-version` makes the toolchain requirement explicit.
 - **`egui-snarl` with `serde`.** We will serialize node graphs to disk, so the `serde` feature must be on.
-- **Profile settings.** egui's debug builds are sluggish because so much work happens every frame. The two lines above make `cargo run` (without `--release`) usable by optimizing dependencies, while keeping *your* code compiled fast. For real benchmarking or a smooth experience, still prefer `cargo run --release`. The `[profile.dev.package."*"]` trick applies `opt-level = 2` only to *dependencies* (egui, wgpu, …), not to your own crate — the `"*"` wildcard targets every package *except* the one being built. Your code stays at `opt-level = 0` (fast to compile), while the heavy libraries run fast enough for interactive use. See the [Cargo profile reference](https://doc.rust-lang.org/cargo/reference/profiles.html) for details.
+- **`egui_extras` with only `image` and `svg`.** These two features are all `install_image_loaders` needs to display `Image`/`Svg` widgets. The older `http` and `file` features were dropped from this project: nothing in the app fetches images over the network or opens files through `egui_extras` (file dialogs, when we want them, come from the `rfd` crate in [Chapter 7](./ch07-input-menus.md) — and even that is optional, added only when you reach that chapter).
+- **Profile settings.** egui's debug builds are sluggish because so much work happens every frame. The two `[profile]` blocks above make `cargo run` (without `--release`) usable by optimizing dependencies, while keeping *your* code compiled fast. The `[profile.dev.package."*"]` trick applies `opt-level = 2` only to *dependencies* (egui, wgpu, …), not to your own crate — the `"*"` wildcard targets every package *except* the one being built. Your code stays at `opt-level = 0` (fast to compile), while the heavy libraries run fast enough for interactive use. The `[profile.release]` block adds thin LTO, a single codegen unit, and symbol stripping for a smaller, better-optimized shipping binary. See the [Cargo profile reference](https://doc.rust-lang.org/cargo/reference/profiles.html) for details.
 - **`x11` and `wayland`** are Linux-only winit backends. On macOS and Windows these features are silently ignored (they compile to no-ops), so listing them is harmless — a single `Cargo.toml` works across all three desktop platforms.
 
-## The wgpu Backends Gotcha
+## The wgpu Backends (No Extra Dependency Needed)
 
-This is the single most common "why is my window black / why did it panic" issue with eframe 0.35, so it gets its own section.
+A common older-tutorial pitfall is adding a *direct* `wgpu` dependency to `Cargo.toml` with target-specific backend features (`dx12`, `metal`, `webgl`). **You do not need to do this with eframe 0.35.** The `wgpu` feature on `eframe` enables `egui-wgpu` with its default features, which already turn on wgpu 29's native backends (DX12 on Windows, Metal on macOS, Vulkan/GLES on Linux). The window simply presents.
 
-eframe enables **none** of wgpu's platform backends by default. That means: even though `eframe` with the `wgpu` feature pulls in the wgpu crate, wgpu itself has no way to present to a surface on your platform unless you enable the right backend feature. On a fresh project you will get a runtime error along the lines of "no suitable GPU adapter found" or just a blank/black window.
+> **Warning: do not re-add a direct `wgpu` dependency.** This project previously pinned `wgpu = "23"` in a `[target.'cfg(not(target_arch = "wasm32"))'.dependencies]` block. Because `eframe` 0.35 pulls in a newer wgpu transitively, pinning an older major version here compiled an *entire second, unused wgpu tree* alongside the one eframe already uses — a slow, confusing build for no benefit. Leave wgpu out of `[dependencies]` unless `egui-wgpu`'s default feature set is ever insufficient for your needs.
 
-You must add the matching backend features. Because the right set depends on the target platform, use `cfg` expressions. Add this to your `Cargo.toml`, **outside** the `[dependencies]` table, as a target-specific dependency block:
-
-```toml
-# wgpu backends are NOT enabled by eframe by default. Add the ones you need.
-# These are platform-specific, so exclude wasm32 (the web uses wgpu's webgpu/webgl paths).
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-wgpu = { version = "23", features = ["dx12", "metal", "webgl"] }
-```
-
-What each feature buys you:
-
-- `dx12` — presentation on Windows. Required there.
-- `metal` — presentation on macOS/iOS. Required there.
-- `webgl` — the WebGL backend (used when WebGPU is unavailable, including some Linux setups). On Linux desktop you typically also want the Vulkan backend, which wgpu picks up automatically as a core backend, so you do not need a feature flag for it.
-
-> **Warning: do not enable `webgpu` for native.** `wgpu`'s `webgpu` feature is for the web target only. On desktop it is a no-op at best and confusing at worst. If you are only targeting native, stick with `dx12`, `metal`, and `webgl`.
-
-If you are also building for the web, the `webgl`/`webgpu` backends are configured through wgpu's web build path (and eframe's wasm glue); leave them out of the native block shown above.
+If you *did* want to control the exact backends (rare), the place to do it is through `egui-wgpu`'s features, not a second `wgpu` crate dependency. For the web target, the WebGL/WebGPU paths are configured through eframe's wasm glue, not through native backend features.
 
 ## Build Prerequisites on Linux
 
@@ -111,29 +95,23 @@ A real app does not live in a single `main.rs`. Following the Rust Book's guidan
 flow-builder/
 ├── Cargo.toml
 └── src/
-    ├── main.rs              # entrypoint: build NativeOptions, run_native
-    ├── app.rs               # the App struct + trait impls (state owner)
-    ├── state.rs             # app-wide state (settings, current file path, ...)
-    ├── theme.rs             # Visuals, colors, fonts setup
+    ├── main.rs              # entrypoint: build NativeOptions, run_native (stays thin)
+    ├── theme.rs             # EditorTheme: Visuals, colors, style setup
     ├── graph/
     │   ├── mod.rs           # re-exports
-    │   ├── node.rs          # node data model
-    │   └── graph.rs         # the Snarl container + node-graph logic
-    ├── panels/
-    │   ├── mod.rs
-    │   ├── sidebar.rs       # left SidePanel contents
-    │   ├── toolbar.rs       # top TopBottomPanel contents
-    │   └── canvas.rs        # central panel: the snarl view
+    │   ├── model.rs         # NodeId, Pin, Node, Link — pure data
+    │   └── state.rs         # GraphState — ID allocation, mutations
     └── ui/
-        ├── mod.rs
-        └── widgets.rs       # custom widgets (e.g. the Knob in Ch.4)
+        ├── mod.rs           # re-exports (pub use app::App;)
+        ├── app.rs           # the App struct + eframe::App impl (state owner)
+        └── viewer.rs        # DemoNode enum + DemoViewer (SnarlViewer impl)
 ```
 
 The principle is **separation of concerns**, and the boundary is egui itself:
 
-- **`graph/` is a *pure data model*.** It knows about nodes, pins, connections, evaluation. It does **not** import `egui`. This means your graph logic is testable without rendering anything—exactly as the Rust Book advocates keeping I/O out of core logic ([Ch. 11 on testing](https://doc.rust-lang.org/stable/book/ch11-00-testing.html)).
-- **`panels/` and `ui/` are the *rendering layer*.** They import egui and turn `graph` data into widgets. They may read from and call methods on the graph, but they do not own it.
-- **`app.rs` is the *state owner*.** It holds the `graph`, the `state`, and wires everything together in `App::ui`. It is the only place that lives across frames.
+- **`graph/` is a *pure data model*.** It knows about nodes, pins, and links. It does **not** import `egui`. This means your graph logic is testable without rendering anything—exactly as the Rust Book advocates keeping I/O out of core logic ([Ch. 11 on testing](https://doc.rust-lang.org/stable/book/ch11-00-testing.html)). (In [Chapter 8](./ch08-egui-snarl.md) `egui-snarl`'s `Snarl<T>` takes over as the *runtime* graph container, so `graph/` becomes a pedagogical module kept only for its headless unit test — see the note in [Chapter 5](./ch05-architecture.md).)
+- **`ui/` is the *rendering layer*.** It imports egui (and, later, `egui_snarl`) and turns graph data into pixels. It may read from and call methods on the graph, but it does not own the persistent state.
+- **`ui/app.rs` is the *state owner*.** It holds the `Snarl`, the viewer, and the ephemeral UI flags, and wires everything together in `App::ui`. It is the only place that lives across frames.
 
 This mirrors how a well-architected Rust program separates the model from the view. The payoff comes in later chapters: when we add undo/redo in the graph, or when we render the same graph to an export image, the `graph/` module is reusable unchanged.
 
@@ -147,12 +125,12 @@ If you have read the Rust Book's [Chapter 7](https://doc.rust-lang.org/stable/bo
 // src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod app;
 mod graph;
-mod panels;
-mod state;
 mod theme;
 mod ui;
+
+use crate::ui::App;
+use eframe::egui;
 
 fn main() -> eframe::Result {
     // (NativeOptions + run_native go here — see Chapter 3)
@@ -162,7 +140,7 @@ fn main() -> eframe::Result {
 
 The `windows_subsystem` attribute hides the console window on Windows in release builds. In debug builds we keep the console so `println!` output is visible—useful while developing. This is the standard Rust idiom for GUI apps; see the Rust Book's note on it in the context of [Ch. 1's "Hello, World"](https://doc.rust-lang.org/stable/book/ch01-02-hello-world.html) and the broader discussion of attributes.
 
-> **Tip: keep `main` thin.** `main` should configure eframe and call `run_native`; all real work lives in `app.rs`. This keeps the entrypoint readable and makes the app testable.
+> **Tip: keep `main` thin.** `main` should declare the modules, configure eframe, and call `run_native`; all real work lives in `ui/app.rs`, `theme.rs`, and `graph/`. This keeps the entrypoint readable and makes the app testable. (The reference implementation's `main.rs` is exactly this thin — under 30 lines.)
 
 ## A Minimal main.rs That Opens a Window
 
@@ -212,7 +190,7 @@ $ cargo run --release
 
 Use `--release`. egui in debug builds is noticeably sluggish because the per-frame work is unoptimized; with the `[profile.dev.package."*"]` tweak from earlier, plain `cargo run` is *tolerable* for iteration, but for an honest feel of the toolkit, `--release` is the way.
 
-If the window is blank or the program panics about "no suitable adapter," revisit the **wgpu backends gotcha** above—you almost certainly forgot a backend feature.
+If the window is blank or the program panics about "no suitable adapter," double-check that your `eframe` dependency has the `wgpu` feature on — that is what brings in the native GPU backends (see the section above). You should not need any separate `wgpu` dependency.
 
 ## Next Steps
 
