@@ -99,7 +99,7 @@ Let us define a small set of demo nodes: a `Number` node that holds an `f64`, a 
 use serde::{Deserialize, Serialize};
 
 /// Every node in our graph is one of these variants.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum DemoNode {
     /// A constant number the user can edit.
     Number(f64),
@@ -308,7 +308,7 @@ use egui_snarl::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum DemoNode {
     Number(f64),
     Text(String),
