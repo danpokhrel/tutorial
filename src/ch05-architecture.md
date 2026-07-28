@@ -69,23 +69,22 @@ Following the guidance in Rust Book [Chapter 7](https://doc.rust-lang.org/stable
 
 ```text
 src/
-├── main.rs              // entry point, eframe launch
-├── app.rs               // the App struct and logic()/ui() orchestration
-├── theme.rs             // visual style, colors, fonts
+├── main.rs              // entry point, eframe launch (stays thin)
+├── theme.rs             // EditorTheme: visual style, colors
 ├── graph/
 │   ├── mod.rs           // re-exports
-│   ├── model.rs         // NodeId, Pin, Node, Link — pure data
+│   ├── model.rs         // NodeId, PinId, Pin, Node, Link — pure data
 │   └── state.rs         // GraphState — ID allocation, mutations
 └── ui/
-    ├── mod.rs           // re-exports
-    ├── graph_view.rs    // renders the graph canvas
-    └── panels.rs        // side panels, toolbar
+    ├── mod.rs           // re-exports (pub use app::App;)
+    ├── app.rs           // the App struct + eframe::App impl (state owner)
+    └── viewer.rs        // the SnarlViewer impl + node enum (Ch. 8+)
 ```
 
 The important boundary is between `graph/` and `ui/`:
 
 - `graph/` depends on `serde` and nothing else GUI-related. It compiles and tests on a machine with no display.
-- `ui/` depends on `egui` and on `graph/`. It turns `GraphState` into pixels.
+- `ui/` depends on `egui` (and, from [Chapter 8](./ch08-egui-snarl.md), `egui_snarl`). It turns graph data into pixels.
 
 This is the same "separate the library from the binary" idea described in Rust Book [Chapter 7](https://doc.rust-lang.org/stable/book/ch07-01-packages-and-crates-for-making-libraries-and-executables.html) and it pays off the moment you want to write property tests against your graph model.
 
@@ -110,10 +109,15 @@ pub struct NodeId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LinkId(pub u64);
 
+/// A newtype around `u64` identifying a pin on a node, distinct from
+/// `NodeId`/`LinkId` so endpoints can't be mixed up at compile time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PinId(pub u64);
+
 /// An input or output socket on a node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pin {
-    pub id: u64,
+    pub id: PinId,
     pub name: String,
     pub kind: PinKind,
 }
@@ -139,9 +143,9 @@ pub struct Node {
 pub struct Link {
     pub id: LinkId,
     pub from_node: NodeId,
-    pub from_pin: u64,
+    pub from_pin: PinId,
     pub to_node: NodeId,
-    pub to_pin: u64,
+    pub to_pin: PinId,
 }
 ```
 
@@ -153,7 +157,7 @@ pub struct Link {
 
 ```rust,no_run
 // src/graph/state.rs
-use super::model::{LinkId, Link, Node, NodeId};
+use super::model::{Link, LinkId, Node, NodeId, PinId};
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]
@@ -183,10 +187,14 @@ impl GraphState {
     pub fn add_link(
         &mut self,
         from_node: NodeId,
-        from_pin: u64,
+        from_pin: PinId,
         to_node: NodeId,
-        to_pin: u64,
+        to_pin: PinId,
     ) -> LinkId {
+        debug_assert!(
+            self.nodes.contains_key(&from_node) && self.nodes.contains_key(&to_node),
+            "add_link: endpoint node does not exist"
+        );
         let id = LinkId(self.next_link_id);
         self.next_link_id += 1;
         self.links.insert(
@@ -224,7 +232,7 @@ mod tests {
         let mut g = GraphState::default();
         let a = g.add_node("A", [0.0, 0.0]);
         let b = g.add_node("B", [100.0, 0.0]);
-        let _link = g.add_link(a, 0, b, 0);
+        let _link = g.add_link(a, PinId(0), b, PinId(0));
         assert_eq!(g.links.len(), 1);
         g.remove_node(a);
         assert!(g.links.is_empty());
