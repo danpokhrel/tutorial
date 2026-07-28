@@ -4,6 +4,8 @@ Our editor is functional and interactive, but it still uses the default visual s
 
 ## `SnarlStyle`: The Global Graph Style
 
+> **Reference-impl note:** the demonstration editor does **not** use a custom `SnarlStyle` — it renders the snarl with `SnarlWidget::new().id_salt(...).show(...)` and no `.style(...)`, so it inherits snarl's default node frame, grid background, and bezier wires. This chapter (like [Chapter 10](./ch10-connections.md)) is an optional enhancement: read it when you want a polished, branded graph look, and skip it if the defaults suffice. The reference impl's `DemoViewer` also does not override `header_frame` (see [Chapter 9](./ch09-nodes-pins.md)), so there are no per-type colored headers either.
+
 Where `egui`'s `Visuals`/`Style`/`FontDefinitions` (from [Chapter 6](./ch06-theming.md)) style the whole application, `SnarlStyle` styles *the graph specifically*. It controls the graph background, the default node frame, the pin layout, the pin size, and more. You construct it with `SnarlStyle::new()` and override fields with struct-update syntax — the same `{ ..Default::default() }` idiom the Rust Book introduces when discussing structs in [Chapter 5.1](https://doc.rust-lang.org/stable/book/ch05-01-defining-structs.html):
 
 ```rust,no_run
